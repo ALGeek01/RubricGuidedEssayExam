@@ -430,7 +430,7 @@ def test_performance_log_visible_when_instructor_signed_in(logged_in_instructor:
 
 
 def test_question_analysis_dashboard(logged_in_instructor: TestClient):
-    dash = logged_in_instructor.get("/professor/question-analysis")
+    dash = logged_in_instructor.get("/professor/question-analysis?run=1")
     assert dash.status_code == 200
     assert "Exam question analysis" in dash.text
     assert "Mock analysis" in dash.text or "No questions matched" in dash.text
@@ -467,7 +467,7 @@ def test_question_analysis_lists_generated_prompt(logged_in_instructor: TestClie
     )
     assert r0.status_code == 303
 
-    qa = logged_in_instructor.get("/professor/question-analysis")
+    qa = logged_in_instructor.get("/professor/question-analysis?run=1")
     assert qa.status_code == 200
     assert "Question-level detail" in qa.text
     assert "Widget engineering for qualitative analysis fixture" in qa.text or "analysis-student" in qa.text

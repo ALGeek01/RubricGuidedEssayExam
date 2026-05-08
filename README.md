@@ -89,14 +89,14 @@ The server listens on **http://127.0.0.1:8000** by default.
 
 5. Start the development server (pick one):
 
-   **Option A — helper script** (sets `MOCK_LLM` to `1` by default if unset, then runs Uvicorn):
+   **Option A — helper script** (sets `MOCK_LLM` to `1` by default if unset, then runs Uvicorn with reload limited to app/template/static/assets):
 
    ```bash
    chmod +x run_dev.sh
    ./run_dev.sh
    ```
 
-   **Option B — auto-launch script** (creates `.venv`, installs deps once, and starts Uvicorn):
+   **Option B — auto-launch script** (creates `.venv`, installs deps once, and starts Uvicorn with reload limited to app/template/static/assets):
 
    ```bash
    chmod +x scripts/launch_project.sh
@@ -113,7 +113,7 @@ The server listens on **http://127.0.0.1:8000** by default.
 
    ```bash
    export MOCK_LLM=1
-   uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
    ```
 
 6. Leave Terminal open while you use the app. Press **Ctrl+C** to stop the server.

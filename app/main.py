@@ -1402,6 +1402,7 @@ def professor_question_analysis(
     education_level: str | None = Query(default=None),
     llm_mode: str = Query(default="all"),
     compare_by: str = Query(default="education_level"),
+    run: str = Query(default="0"),
     sample_limit: int = Query(default=200, ge=1, le=2000),
 ):
     redir = _instructor_login_redirect(request)
@@ -1427,6 +1428,7 @@ def professor_question_analysis(
     }
     if compare_key not in compare_options:
         compare_key = "education_level"
+    should_run_analysis = (run or "").strip().lower() in ("1", "true", "yes", "on")
 
     q = (
         db.query(ExamQuestion, ExamSession)
@@ -1472,18 +1474,24 @@ def professor_question_analysis(
         .limit(80)
         .all()
     )
-    try:
-        analysis_rows, methodology_note = analyze_questions_semantic(
-            row_dicts,
-            model_name=get_settings().question_analysis_st_model,
-            sample_limit=sample_limit if sample_limit else None,
+    if should_run_analysis:
+        try:
+            analysis_rows, methodology_note = analyze_questions_semantic(
+                row_dicts,
+                model_name=get_settings().question_analysis_st_model,
+                sample_limit=sample_limit if sample_limit else None,
+            )
+            df = analysis_dataframe(analysis_rows)
+            category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
+            charts = build_category_charts_base64(analysis_rows, compare_by=compare_key)
+        except RuntimeError as e:
+            error_message = str(e)
+            methodology_note = ""
+    else:
+        methodology_note = (
+            "Set filters and click Run analysis to start scoring. "
+            "This screen now opens quickly without auto-running heavy analysis."
         )
-        df = analysis_dataframe(analysis_rows)
-        category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
-        charts = build_category_charts_base64(analysis_rows, compare_by=compare_key)
-    except RuntimeError as e:
-        error_message = str(e)
-        methodology_note = ""
 
     category_records: list[dict] = []
     if category_table is not None and not category_table.empty:
@@ -1501,6 +1509,7 @@ def professor_question_analysis(
             "compare_by": compare_key,
             "compare_options": compare_options,
             "sample_limit": sample_limit,
+            "run_analysis": should_run_analysis,
             "analysis_rows": analysis_rows,
             "methodology_note": methodology_note,
             "charts": charts,

@@ -22,6 +22,7 @@
 
 <form class="panel form-card analysis-filters" method="get" action="/professor/question-analysis" id="analysis-filter-form">
   <h2 class="panel-title">Filters</h2>
+  <input type="hidden" name="run" value="1">
   <div class="form-grid">
     <div class="field">
       <label for="session_id">Exam session (optional)</label>
@@ -82,6 +83,13 @@
   </div>
 </div>
 
+{% if not run_analysis %}
+<aside class="callout callout-tip" role="status" aria-live="polite">
+  <strong>Ready to analyze:</strong> choose your filters and click <strong>Run analysis</strong>.  
+  We only run the heavy scoring job after you submit, so this page loads quickly.
+</aside>
+{% endif %}
+
 {% if error_message %}
 <p class="error-text" role="alert">{{ error_message }}</p>
 {% endif %}
@@ -92,6 +100,7 @@
 </aside>
 {% endif %}
 
+{% if run_analysis %}
 {% if charts %}
 <div class="analysis-charts">
   {% if charts.freq_quality_codes %}
@@ -249,6 +258,7 @@
     </table>
   </div>
 </div>
+{% endif %}
 <script>
 (function () {
   var form = document.getElementById('analysis-filter-form');

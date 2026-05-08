@@ -63,4 +63,4 @@ if [[ -n "$IN_USE_PIDS" ]]; then
 fi
 
 echo "Starting RGEE at http://127.0.0.1:8000"
-exec "$PYTHON_BIN" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+exec "$PYTHON_BIN" -m uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
