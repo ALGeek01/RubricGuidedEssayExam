@@ -4,9 +4,12 @@
 <section class="hero hero-compact">
   <div class="hero-row">
     <h1 class="hero-title">{% block header_title %}Instructor dashboard{% endblock %}</h1>
-    <form method="post" action="/professor/logout" class="hero-inline-form">
-      <button type="submit" class="btn btn-secondary">Log out</button>
-    </form>
+    <div class="hero-inline-actions">
+      <a href="/professor/tools" class="btn btn-secondary">Developer tools</a>
+      <form method="post" action="/professor/logout" class="hero-inline-form">
+        <button type="submit" class="btn btn-secondary">Log out</button>
+      </form>
+    </div>
   </div>
   <p class="hero-lead">Recent exam sessions, newest first (up to 200).</p>
 </section>

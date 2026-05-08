@@ -11,6 +11,7 @@ os.environ["MOCK_LLM"] = "1"
 _cred_dir = tempfile.mkdtemp()
 os.environ["INSTRUCTOR_CREDENTIALS_PATH"] = os.path.join(_cred_dir, "instructor_credentials.json")
 os.environ["INSTRUCTOR_SESSION_SECRET"] = "test-instructor-session-secret-32chars!!"
+os.environ["RGEE_MOCK_QUESTION_ANALYSIS"] = "1"
 
 import pytest
 from fastapi.testclient import TestClient

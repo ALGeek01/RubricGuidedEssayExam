@@ -2,9 +2,7 @@
 cd "$(dirname "$0")"
 # Uses .env for TOGETHER_API_KEY and MOCK_LLM; per-session Mock/Production is chosen on the home page.
 PY=""
-if [[ -x .venv/bin/python3.14 ]]; then
-  PY=".venv/bin/python3.14"
-elif [[ -x .venv/bin/python ]]; then
+if [[ -x .venv/bin/python ]]; then
   PY=".venv/bin/python"
 fi
 if [[ -n "$PY" ]]; then

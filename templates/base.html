@@ -20,8 +20,10 @@
       </div>
       <nav class="main-nav" aria-label="Main">
         <a href="/" class="nav-link{% if request.url.path == '/' %} is-active{% endif %}">Home</a>
-        <a href="/professor" class="nav-link{% if request.url.path.startswith('/professor') %} is-active{% endif %}">Instructor</a>
-        <a href="/performance-log" class="nav-link{% if request.url.path.startswith('/performance-log') %} is-active{% endif %}">Performance log</a>
+        <a href="/professor" class="nav-link{% if request.url.path.startswith('/professor') and not request.url.path.startswith('/professor/tools') and not request.url.path.startswith('/professor/question-analysis') %} is-active{% endif %}">Instructor</a>
+        {% if instructor_signed_in(request) %}
+        <a href="/professor/tools" class="nav-link{% if request.url.path.startswith('/professor/tools') or request.url.path.startswith('/professor/question-analysis') or request.url.path.startswith('/performance-log') %} is-active{% endif %}">Developer tools</a>
+        {% endif %}
       </nav>
     </header>
 

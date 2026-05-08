@@ -31,8 +31,19 @@ A web app for **adaptive, oral-style exams**: students get essay questions tailo
 
 ## Prerequisites
 
-- **Python 3.11+** (3.12 or 3.14 is fine). Check with `python3 --version` (Mac/Linux) or `py -3 --version` / `python --version` (Windows).
+- **Python 3.11+** for the core app; **Python 3.12 (recommended)** or **3.11 / 3.13** if you install **sentence-transformers / PyTorch** for instructor question-analysis (wheels often **do not exist for bleeding-edge releases like 3.14** yet). Check with `python3 --version` (Mac/Linux) or `py -3 --version` / `python --version` (Windows).
 - **Git** (to clone the repository).
+
+### Use Python 3.12 in a fresh venv (macOS/Linux)
+
+After installing Python 3.12 (e.g. `brew install python@3.12`, or [python.org](https://www.python.org/downloads/), or **pyenv** with the repo’s `.python-version`),
+
+```bash
+chmod +x scripts/recreate_venv.sh
+./scripts/recreate_venv.sh
+```
+
+This removes `.venv`, recreates it with 3.12 (or the next-best 3.11/3.13 on your PATH), and installs `requirements.txt` plus **`requirements-analysis.txt`** (PyTorch stack).
 
 ## How to run the app
 

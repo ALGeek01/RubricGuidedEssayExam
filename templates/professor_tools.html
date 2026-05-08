@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Developer tools{% endblock %}
+{% block body %}
+<section class="hero hero-compact">
+  <div class="hero-row">
+    <h1 class="hero-title">Instructor developer tools</h1>
+    <form method="post" action="/professor/logout" class="hero-inline-form">
+      <button type="submit" class="btn btn-secondary">Log out</button>
+    </form>
+  </div>
+  <p class="hero-lead">
+    Diagnostics and analytics for course staff and engineers. Student accounts never see these pages —
+    sign-in is shared with the main instructor dashboard.
+  </p>
+</section>
+
+<div class="devtools-grid">
+  <a href="/professor/question-analysis" class="panel devtools-card panel-link-card">
+    <h2 class="panel-title">Question analysis</h2>
+    <p class="muted">
+      <strong>Four-point coding schemes</strong> (essay question quality; grade appropriateness) via embedding
+      similarity to rubric tiers, plus supplementary 0–10 relevance / humor signals. Built on sentence-transformers
+      (PyTorch) when installed. Pandas summaries and matplotlib frequency charts support portfolio-level stats.
+    </p>
+    <span class="link-arrow">Open analysis →</span>
+  </a>
+
+  <a href="/performance-log" class="panel devtools-card panel-link-card">
+    <h2 class="panel-title">Performance log</h2>
+    <p class="muted">
+      HTTP timings, Together.ai LLM durations, and browser UX spans (generate → first question). Links into
+      session detail where applicable for debugging regressions or slow paths.
+    </p>
+    <span class="link-arrow">Open log →</span>
+  </a>
+</div>
+
+<p class="muted small-print">
+  Scores are <strong>diagnostic embeddings</strong>, not human judgments — use them alongside rubric grades
+  when redesigning prompts. First live run downloads the transformer weights (offline-friendly after cache).
+</p>
+{% endblock %}

@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 PYTHON_FOR_VENV=""
-for candidate in python3.14 python3.13 python3.12 python3.11 python3; do
+# Prefer 3.12 / 3.11 / 3.13 before 3.14 so PyTorch + sentence-transformers wheels exist.
+for candidate in python3.12 python3.11 python3.13 python3.14 python3; do
   if command -v "$candidate" >/dev/null 2>&1; then
     PYTHON_FOR_VENV="$candidate"
     break
@@ -18,6 +19,10 @@ if [[ -z "$PYTHON_FOR_VENV" ]]; then
 fi
 
 PYTHON_VERSION="$("$PYTHON_FOR_VENV" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if "$PYTHON_FOR_VENV" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 14) else 1)' 2>/dev/null; then
+  echo "Note: Python 3.14+ often lacks PyTorch wheels. For question-analysis embeddings install 3.12 and run:" >&2
+  echo "  chmod +x scripts/recreate_venv.sh && ./scripts/recreate_venv.sh" >&2
+fi
 if ! "$PYTHON_FOR_VENV" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
   echo "Detected Python $PYTHON_VERSION at $(command -v "$PYTHON_FOR_VENV")."
   echo "RGEE requires Python 3.11 or newer."

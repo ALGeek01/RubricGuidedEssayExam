@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     instructor_username_sha256: str = Field(default="", alias="INSTRUCTOR_USERNAME_SHA256")
     instructor_password_pbkdf2_hex: str = Field(default="", alias="INSTRUCTOR_PASSWORD_PBKDF2_HEX")
 
+    # Hugging Face sentence-transformers model id (PyTorch) for instructor question analysis.
+    question_analysis_st_model: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2",
+        alias="QUESTION_ANALYSIS_ST_MODEL",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

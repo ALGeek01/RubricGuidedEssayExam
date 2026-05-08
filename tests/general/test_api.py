@@ -393,6 +393,12 @@ def test_professor_requires_login(client: TestClient):
     assert r2.status_code == 303
     assert "/professor/login" in (r2.headers.get("location") or "")
 
+    assert client.get("/professor/tools", follow_redirects=False).status_code == 303
+    assert client.get("/professor/question-analysis", follow_redirects=False).status_code == 303
+    rlog = client.get("/performance-log", follow_redirects=False)
+    assert rlog.status_code == 303
+    assert "/professor/login" in (rlog.headers.get("location") or "")
+
 
 def test_professor_logout_clears_session(logged_in_instructor: TestClient):
     r = logged_in_instructor.post("/professor/logout", follow_redirects=False)
@@ -411,14 +417,27 @@ def test_professor_login_wrong_password_returns_403_with_message(client: TestCli
     assert "We hit a temporary issue" not in r.text
 
 
-def test_performance_log_page(client: TestClient):
-    r = client.get("/performance-log")
+def test_performance_log_page_requires_instructor_sign_in(client: TestClient):
+    r = client.get("/performance-log", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/professor/login" in (r.headers.get("location") or "")
+
+
+def test_performance_log_visible_when_instructor_signed_in(logged_in_instructor: TestClient):
+    r = logged_in_instructor.get("/performance-log")
     assert r.status_code == 200
     assert "Performance log" in r.text
 
 
-def test_http_log_links_exam_start_to_session(client: TestClient):
-    r0 = client.post(
+def test_question_analysis_dashboard(logged_in_instructor: TestClient):
+    dash = logged_in_instructor.get("/professor/question-analysis")
+    assert dash.status_code == 200
+    assert "Exam question analysis" in dash.text
+    assert "Mock analysis" in dash.text or "No questions matched" in dash.text
+
+
+def test_http_log_links_exam_start_to_session(logged_in_instructor: TestClient):
+    r0 = logged_in_instructor.post(
         "/exam/start",
         data={
             "student_id": "assoc-test",
@@ -430,14 +449,32 @@ def test_http_log_links_exam_start_to_session(client: TestClient):
     assert r0.status_code == 303
     session_id = int(r0.headers["location"].split("/exam/")[1].split("/")[0])
 
-    log_page = client.get("/performance-log")
+    log_page = logged_in_instructor.get("/performance-log")
     assert log_page.status_code == 200
     assert f'href="/professor/exam/{session_id}"' in log_page.text
     assert "assoc-test" in log_page.text
 
 
-def test_client_timing_records_and_returns_204(client: TestClient):
-    r0 = client.post(
+def test_question_analysis_lists_generated_prompt(logged_in_instructor: TestClient):
+    r0 = logged_in_instructor.post(
+        "/exam/start",
+        data={
+            "student_id": "analysis-student",
+            "professor_domain": "Widget engineering for qualitative analysis fixture.",
+            "num_questions": "1",
+        },
+        follow_redirects=False,
+    )
+    assert r0.status_code == 303
+
+    qa = logged_in_instructor.get("/professor/question-analysis")
+    assert qa.status_code == 200
+    assert "Question-level detail" in qa.text
+    assert "Widget engineering for qualitative analysis fixture" in qa.text or "analysis-student" in qa.text
+
+
+def test_client_timing_records_and_returns_204(logged_in_instructor: TestClient):
+    r0 = logged_in_instructor.post(
         "/exam/start",
         data={
             "student_id": "timing-student",
@@ -449,13 +486,13 @@ def test_client_timing_records_and_returns_204(client: TestClient):
     assert r0.status_code == 303
     session_id = int(r0.headers["location"].split("/exam/")[1].split("/")[0])
 
-    r = client.post(
+    r = logged_in_instructor.post(
         f"/exam/{session_id}/client-timing",
         data={"client_ms_wall": "1234.5"},
     )
     assert r.status_code == 204
 
-    log_page = client.get("/performance-log")
+    log_page = logged_in_instructor.get("/performance-log")
     assert log_page.status_code == 200
     assert "generate_click_to_first_question_visible" in log_page.text
     assert "1234.5" in log_page.text or "1234" in log_page.text

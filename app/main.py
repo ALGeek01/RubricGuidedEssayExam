@@ -36,6 +36,12 @@ from app.database import (
     init_db,
 )
 from app.perf_logging import log_performance_event
+from app.question_analysis import (
+    analysis_dataframe,
+    analyze_questions_semantic,
+    build_category_charts_base64,
+    summarize_by_category,
+)
 from app.errors import TogetherApiError
 from app.education_levels import (
     ALLOWED_LEVEL_IDS,
@@ -65,6 +71,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["fromjson"] = lambda s: json.loads(s)
 templates.env.filters["level_label"] = label_for_level
 templates.env.filters["strictness_label"] = label_for_strictness
+templates.env.globals["instructor_signed_in"] = instructor_session_ok
 
 _EXAM_ID_IN_PATH = re.compile(r"^/(?:exam|professor/exam)/(\d+)(?:/|$)")
 
@@ -596,6 +603,9 @@ def exam_client_timing(
 
 @app.get("/performance-log", response_class=HTMLResponse)
 def performance_log(request: Request, db: Session = Depends(get_db)):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
     rows = (
         db.query(PerformanceLog)
         .order_by(PerformanceLog.id.desc())
@@ -1374,6 +1384,131 @@ def professor_dashboard(request: Request, db: Session = Depends(get_db)):
         return redir
     sessions = db.query(ExamSession).order_by(ExamSession.created_at.desc()).limit(200).all()
     return templates.TemplateResponse(request, "professor.html", {"sessions": sessions})
+
+
+@app.get("/professor/tools", response_class=HTMLResponse)
+def professor_developer_tools(request: Request):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request, "professor_tools.html", {})
+
+
+@app.get("/professor/question-analysis", response_class=HTMLResponse)
+def professor_question_analysis(
+    request: Request,
+    db: Session = Depends(get_db),
+    session_id_raw: str | None = Query(default=None, alias="session_id"),
+    education_level: str | None = Query(default=None),
+    llm_mode: str = Query(default="all"),
+    compare_by: str = Query(default="education_level"),
+    sample_limit: int = Query(default=200, ge=1, le=2000),
+):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    session_id: int | None = None
+    if session_id_raw and str(session_id_raw).strip().isdigit():
+        session_id = int(str(session_id_raw).strip())
+
+    lev = (education_level or "").strip()
+    if lev and lev not in ALLOWED_LEVEL_IDS:
+        lev = ""
+    lm = (llm_mode or "all").strip().lower()
+    if lm not in ("all", "mock", "production"):
+        lm = "all"
+    compare_key = (compare_by or "education_level").strip().lower()
+    compare_options = {
+        "education_level": "Education level",
+        "llm_mode": "LLM mode",
+        "session_id": "Session",
+        "quality_code": "Quality code (1–4)",
+        "grade_appropriateness_code": "Appropriateness code (1–4)",
+    }
+    if compare_key not in compare_options:
+        compare_key = "education_level"
+
+    q = (
+        db.query(ExamQuestion, ExamSession)
+        .join(ExamSession, ExamQuestion.session_id == ExamSession.id)
+    )
+    if session_id is not None:
+        q = q.filter(ExamSession.id == int(session_id))
+    if lev:
+        q = q.filter(ExamSession.education_level == lev)
+    if lm == "mock":
+        q = q.filter(ExamSession.use_mock_llm.is_(True))
+    elif lm == "production":
+        q = q.filter(ExamSession.use_mock_llm.is_(False))
+
+    pairs = (
+        q.order_by(ExamSession.id.desc(), ExamQuestion.question_index.asc())
+        .limit(2500)
+        .all()
+    )
+    row_dicts = [
+        {
+            "session_id": session.id,
+            "exam_code": session.exam_code,
+            "question_id": eq.id,
+            "question_index": eq.question_index,
+            "education_level": session.education_level,
+            "use_mock_llm": session.use_mock_llm,
+            "essay_question": eq.essay_question,
+            "professor_domain": session.professor_domain,
+            "background_information": eq.background_information or "",
+        }
+        for (eq, session) in pairs
+    ]
+
+    error_message: str | None = None
+    analysis_rows = []
+    methodology_note = ""
+    charts: dict[str, str] = {}
+    category_table = None
+    recent_sessions = (
+        db.query(ExamSession)
+        .order_by(ExamSession.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    try:
+        analysis_rows, methodology_note = analyze_questions_semantic(
+            row_dicts,
+            model_name=get_settings().question_analysis_st_model,
+            sample_limit=sample_limit if sample_limit else None,
+        )
+        df = analysis_dataframe(analysis_rows)
+        category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
+        charts = build_category_charts_base64(analysis_rows, compare_by=compare_key)
+    except RuntimeError as e:
+        error_message = str(e)
+        methodology_note = ""
+
+    category_records: list[dict] = []
+    if category_table is not None and not category_table.empty:
+        category_records = category_table.to_dict("records")
+
+    return templates.TemplateResponse(
+        request,
+        "question_analysis.html",
+        {
+            "education_levels": EDUCATION_LEVELS,
+            "sessions_picklist": recent_sessions,
+            "session_id": session_id,
+            "education_level": lev,
+            "llm_mode": lm,
+            "compare_by": compare_key,
+            "compare_options": compare_options,
+            "sample_limit": sample_limit,
+            "analysis_rows": analysis_rows,
+            "methodology_note": methodology_note,
+            "charts": charts,
+            "category_records": category_records,
+            "compare_by_label": compare_options.get(compare_key, "Category"),
+            "error_message": error_message,
+        },
+    )
 
 
 @app.get("/professor/exam/{session_id}", response_class=HTMLResponse)
