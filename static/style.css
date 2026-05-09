@@ -181,6 +181,64 @@ a:hover {
   margin-bottom: 1.5rem;
 }
 
+/* Resume exam — prominent exam ID retrieval guidance */
+.resume-id-banner {
+  margin-top: 1.15rem;
+  padding: 1.15rem 1.25rem 1.2rem;
+  border-radius: var(--radius);
+  text-align: left;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-left-width: 5px;
+  border-left-color: #fbbf24;
+  background: linear-gradient(
+    145deg,
+    rgba(251, 191, 36, 0.14) 0%,
+    rgba(15, 23, 42, 0.92) 42%,
+    rgba(24, 34, 54, 0.95) 100%
+  );
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.12), var(--shadow);
+}
+
+.resume-id-banner-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #fcd34d;
+}
+
+.resume-id-banner-lead {
+  margin: 0 0 0.65rem;
+  font-size: 1.02rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.resume-id-banner-lead strong {
+  color: #fef3c7;
+}
+
+.resume-id-banner-body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #e2e8f0;
+}
+
+.resume-id-banner-body strong {
+  color: inherit;
+  font-weight: 700;
+}
+
+.instructor-analysis-banner .resume-id-banner-body a {
+  font-weight: 600;
+}
+
+.instructor-analysis-banner .resume-id-banner-body a:hover {
+  color: #e0f2fe;
+}
+
 .hero-title {
   font-size: clamp(1.65rem, 4vw, 2.1rem);
   font-weight: 700;
@@ -267,6 +325,122 @@ a:hover {
 
 .analysis-filters {
   margin-bottom: 1.5rem;
+}
+
+.analysis-filters .form-grid {
+  margin-bottom: 0.25rem;
+}
+
+.analysis-filters .form-actions {
+  margin-top: 1.65rem;
+}
+
+.analysis-filters-lead {
+  margin: 0 0 1rem;
+  line-height: 1.5;
+  max-width: 52rem;
+}
+
+.analysis-filter-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.analysis-filter-reference {
+  margin: 1.5rem 0 1.5rem;
+  padding: 0.85rem 1rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.analysis-filter-reference > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--accent);
+  list-style: none;
+  padding: 0.5rem 0;
+}
+
+.analysis-filter-reference > summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-filter-reference > summary::before {
+  content: "";
+  display: inline-block;
+  width: 0.35em;
+  height: 0.35em;
+  margin-right: 0.45em;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  vertical-align: 0.12em;
+  transition: transform 0.15s ease;
+}
+
+.analysis-filter-reference[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.analysis-filter-reference-body {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.analysis-filter-reference-title {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.analysis-filter-reference-title:first-child {
+  margin-top: 0;
+}
+
+.analysis-filter-reference-intro {
+  margin: 0 0 0.5rem;
+}
+
+.analysis-filter-dl {
+  margin: 0 0 0.85rem;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem 1rem;
+}
+
+.analysis-filter-dl dt {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.analysis-filter-dl dd {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+@media (min-width: 720px) {
+  .analysis-filter-dl {
+    grid-template-columns: minmax(10rem, 14rem) 1fr;
+  }
+
+  .analysis-filter-dl dt {
+    grid-column: 1;
+  }
+
+  .analysis-filter-dl dd {
+    grid-column: 2;
+  }
 }
 
 /* Exam analysis — Chart.js dashboard (grid widgets) */

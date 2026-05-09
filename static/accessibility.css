@@ -224,29 +224,33 @@ html.a11y-readable-spacing .hero-lead {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 4.25rem;
+  height: 4.25rem;
   padding: 0;
   border-radius: 50%;
   border: none;
-  background: rgba(15, 23, 42, 0.55);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 6px 26px rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
 
 .a11y-fab:hover {
-  background: rgba(30, 41, 59, 0.75);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.48);
+  background: rgba(30, 41, 59, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 8px 30px rgba(0, 0, 0, 0.52);
 }
 
 .a11y-fab:focus-visible {
   outline: 3px solid #fbbf24;
-  outline-offset: 3px;
+  outline-offset: 4px;
 }
 
 .a11y-fab img {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.85rem;
+  height: 2.85rem;
   object-fit: contain;
   display: block;
   pointer-events: none;

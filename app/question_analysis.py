@@ -30,6 +30,46 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
+# Instructor-facing copy for the question-analysis filter form (shown next to the controls).
+ANALYSIS_COMPARE_BY_HELP: dict[str, str] = {
+    "education_level": (
+        "Charts and the category table group each question by the exam session’s education level "
+        "(e.g. middle school vs high school). Use this to see whether scores differ by level."
+    ),
+    "llm_mode": (
+        "Groups each question by whether that exam was generated with the Mock LLM (built-in, "
+        "deterministic demo) or Production (live Together.ai). Use this to compare patterns when "
+        "switching between demo and real model runs."
+    ),
+    "session_id": (
+        "One row per exam attempt: each group is a single session id. Useful when you care about "
+        "variation across attempts rather than a single aggregate slice."
+    ),
+    "quality_code": (
+        "Buckets questions by the assigned 1–4 essay question quality code from embedding-based rubric "
+        "matching. Use this to see how other metrics differ across quality tiers."
+    ),
+    "grade_appropriateness_code": (
+        "Buckets questions by the assigned 1–4 grade-appropriateness code. Use this to compare "
+        "relevance and other signals across appropriateness tiers."
+    ),
+}
+
+ANALYSIS_LLM_FILTER_HELP: dict[str, str] = {
+    "all": (
+        "Include every scored question in the sample, whether the source exam used Mock or "
+        "Production. Best default for an overview."
+    ),
+    "mock": (
+        "Only sessions where the instructor ran in Mock LLM mode (no external API). Good for "
+        "classroom demos and repeatable local testing."
+    ),
+    "production": (
+        "Only sessions where the instructor used Production / Together.ai for generation. "
+        "Excludes mock-only runs so you are comparing real-model behavior."
+    ),
+}
+
 # Coding scheme #1 — Essay question quality (4 points; verbatim rubric shape from course brief).
 QUALITY_CODE_ANCHORS: tuple[str, ...] = (
     "1 point: Poorly phrased, confusing, ambiguous, or inappropriate essay exam question.",

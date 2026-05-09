@@ -22,6 +22,10 @@
 
 <form class="panel form-card analysis-filters" method="get" action="/professor/question-analysis" id="analysis-filter-form">
   <h2 class="panel-title">Filters</h2>
+  <p class="muted small-print analysis-filters-lead">
+    Narrow which exam questions are loaded, then choose how to <strong>slice</strong> results in charts and tables.
+    Open <strong>What these options mean</strong> below for a plain-language note on every comparison category and LLM filter.
+  </p>
   <input type="hidden" name="run" value="1">
   <div class="form-grid">
     <div class="field">
@@ -46,29 +50,82 @@
     </div>
     <div class="field">
       <label for="llm_mode">LLM mode</label>
-      <select id="llm_mode" name="llm_mode">
+      <select id="llm_mode" name="llm_mode" aria-describedby="llm-mode-active-hint">
         <option value="all"{% if llm_mode == 'all' %} selected{% endif %}>Mock + Production</option>
         <option value="mock"{% if llm_mode == 'mock' %} selected{% endif %}>Mock only</option>
         <option value="production"{% if llm_mode == 'production' %} selected{% endif %}>Production only</option>
       </select>
+      <p class="hint analysis-filter-hint" id="llm-mode-active-hint">{{ llm_filter_help.get(llm_mode, llm_filter_help['all']) }}</p>
     </div>
     <div class="field">
       <label for="compare_by">Comparison category</label>
-      <select id="compare_by" name="compare_by">
+      <select id="compare_by" name="compare_by" aria-describedby="compare-by-active-hint">
         {% for key, label in compare_options.items() %}
         <option value="{{ key }}"{% if compare_by == key %} selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
+      <p class="hint analysis-filter-hint" id="compare-by-active-hint">{{ compare_by_help.get(compare_by, compare_by_help.get('education_level', '')) }}</p>
     </div>
     <div class="field">
       <label for="sample_limit">Max questions analyzed</label>
       <input id="sample_limit" name="sample_limit" type="number" min="1" max="2000" value="{{ sample_limit }}">
     </div>
   </div>
+  <details class="analysis-filter-reference">
+    <summary>What these options mean</summary>
+    <div class="analysis-filter-reference-body">
+      <h3 class="analysis-filter-reference-title">LLM mode (filter)</h3>
+      <p class="muted small-print analysis-filter-reference-intro">
+        This narrows <em>which questions are loaded</em> before analysis. It is separate from choosing a
+        “comparison category” for charts.
+      </p>
+      <dl class="analysis-filter-dl">
+        {% for key, text in llm_filter_help.items() %}
+        <dt>{% if key == 'all' %}Mock + Production{% elif key == 'mock' %}Mock only{% else %}Production only{% endif %}</dt>
+        <dd>{{ text }}</dd>
+        {% endfor %}
+      </dl>
+      <h3 class="analysis-filter-reference-title">Comparison category (charts &amp; table)</h3>
+      <p class="muted small-print analysis-filter-reference-intro">
+        After questions are scored, this controls how rows are grouped in the overview widgets and the category summary table.
+      </p>
+      <dl class="analysis-filter-dl">
+        {% for key, label in compare_options.items() %}
+        <dt>{{ label }}</dt>
+        <dd>{{ compare_by_help.get(key, '') }}</dd>
+        {% endfor %}
+      </dl>
+    </div>
+  </details>
   <div class="form-actions">
     <button type="submit" class="btn btn-primary" id="btn-run-analysis">Run analysis</button>
   </div>
 </form>
+<script type="application/json" id="analysis-filter-help-payload">{{ {"llm": llm_filter_help, "compare": compare_by_help } | tojson }}</script>
+<script>
+(function () {
+  var payloadEl = document.getElementById("analysis-filter-help-payload");
+  var llmSel = document.getElementById("llm_mode");
+  var cmpSel = document.getElementById("compare_by");
+  var llmHint = document.getElementById("llm-mode-active-hint");
+  var cmpHint = document.getElementById("compare-by-active-hint");
+  if (!payloadEl || !llmSel || !cmpSel || !llmHint || !cmpHint) return;
+  var payload;
+  try {
+    payload = JSON.parse(payloadEl.textContent || "{}");
+  } catch (e) {
+    return;
+  }
+  var llmMap = payload.llm || {};
+  var cmpMap = payload.compare || {};
+  function syncFilterHints() {
+    llmHint.textContent = llmMap[llmSel.value] || llmMap.all || "";
+    cmpHint.textContent = cmpMap[cmpSel.value] || cmpMap.education_level || "";
+  }
+  llmSel.addEventListener("change", syncFilterHints);
+  cmpSel.addEventListener("change", syncFilterHints);
+})();
+</script>
 <div id="analysis-loading-overlay" class="loading-overlay" aria-hidden="true">
   <div class="loading-card exam-loading-card" role="status" aria-live="polite" aria-atomic="true">
     <img

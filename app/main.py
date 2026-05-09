@@ -37,6 +37,8 @@ from app.database import (
 )
 from app.perf_logging import log_performance_event
 from app.question_analysis import (
+    ANALYSIS_COMPARE_BY_HELP,
+    ANALYSIS_LLM_FILTER_HELP,
     analysis_dataframe,
     analyze_questions_semantic,
     build_analysis_chart_payload,
@@ -1509,6 +1511,8 @@ def professor_question_analysis(
             "llm_mode": lm,
             "compare_by": compare_key,
             "compare_options": compare_options,
+            "compare_by_help": ANALYSIS_COMPARE_BY_HELP,
+            "llm_filter_help": ANALYSIS_LLM_FILTER_HELP,
             "sample_limit": sample_limit,
             "run_analysis": should_run_analysis,
             "analysis_rows": analysis_rows,
