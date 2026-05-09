@@ -1,7 +1,0 @@
-# Optional stack for live semantic exam-question scoring (Hugging Face sentence-transformers on PyTorch).
-# Keep these versions compatible with macOS x86 wheels currently available for Python 3.12.
-# (Torch 2.2.x + transformers 4.x + sentence-transformers 3.x + NumPy 1.26.x)
-sentence-transformers>=3.4.0,<4.0.0
-transformers>=4.41.0,<5.0.0
-torch>=2.2.0,<2.4.0
-numpy>=1.26.0,<2.0.0
