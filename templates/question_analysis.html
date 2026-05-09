@@ -16,7 +16,7 @@
   </p>
   <aside class="callout callout-tip" role="note">
     <strong>Tools used:</strong> FastAPI + SQLAlchemy for retrieval, sentence-transformers (Hugging Face, PyTorch backend)
-    for semantic coding, pandas for grouped summaries, and matplotlib for chart visualizations.
+    for semantic coding, pandas for grouped summaries, and <strong>Chart.js</strong> for interactive dashboard widgets.
   </aside>
 </section>
 
@@ -99,42 +99,76 @@
 </aside>
 {% endif %}
 
-{% if run_analysis %}
-{% if charts %}
-<div class="analysis-charts">
-  {% if charts.freq_quality_codes %}
-  <figure class="analysis-chart-fig">
-    <img src="data:image/png;base64,{{ charts.freq_quality_codes }}" alt="Bar chart counting each essay question quality code from 1 to 4">
-    <figcaption class="muted">Coding scheme #1 — frequency distribution</figcaption>
-  </figure>
-  {% endif %}
-  {% if charts.freq_grade_codes %}
-  <figure class="analysis-chart-fig">
-    <img src="data:image/png;base64,{{ charts.freq_grade_codes }}" alt="Bar chart counting each grade appropriateness code from 1 to 4">
-    <figcaption class="muted">Coding scheme #2 — frequency distribution</figcaption>
-  </figure>
-  {% endif %}
-  {% if charts.overall_means %}
-  <figure class="analysis-chart-fig">
-    <img src="data:image/png;base64,{{ charts.overall_means }}" alt="Bar chart of supplementary continuous embedding scores">
-    <figcaption class="muted">Supplementary continuous embedding means (not the 4-point rubric)</figcaption>
-  </figure>
-  {% endif %}
-  {% if charts.by_category %}
-  <figure class="analysis-chart-fig">
-    <img src="data:image/png;base64,{{ charts.by_category }}" alt="Grouped bar chart of mean codes and scaled metrics by selected category">
-    <figcaption class="muted">Means by {{ compare_by_label }} — average tier codes vs scaled embeddings</figcaption>
-  </figure>
-  {% endif %}
-  {% if charts.single_exam %}
-  <figure class="analysis-chart-fig">
-    <img src="data:image/png;base64,{{ charts.single_exam }}" alt="Chart of per-question codes for one exam session">
-    <figcaption class="muted">Single-session drill-down</figcaption>
-  </figure>
-  {% endif %}
+{% if run_analysis and chart_payload is not none and not chart_payload.get('empty') %}
+<script type="application/json" id="analysis-chart-payload">{{ chart_payload | tojson }}</script>
+<div class="analysis-dashboard" id="analysis-dashboard">
+  <header class="analysis-dashboard-header">
+    <h2 class="analysis-dashboard-title">Analysis overview</h2>
+    <p class="analysis-dashboard-lead muted">Interactive widgets · colors match the RGEE theme · resize the window to reflow the grid.</p>
+  </header>
+  <div class="analysis-dashboard-grid">
+    <div class="analysis-widget analysis-widget--stat analysis-widget--span-4">
+      <p class="analysis-widget-kicker">Questions scored</p>
+      <p class="analysis-widget-value" id="metric-total">—</p>
+      <p class="analysis-widget-foot muted">In this filtered sample</p>
+    </div>
+    <div class="analysis-widget analysis-widget--stat analysis-widget--span-4">
+      <p class="analysis-widget-kicker">Exam sessions</p>
+      <p class="analysis-widget-value" id="metric-sessions">—</p>
+      <p class="analysis-widget-foot muted">Distinct session ids</p>
+    </div>
+    <div class="analysis-widget analysis-widget--stat analysis-widget--stat-accent analysis-widget--span-4">
+      <p class="analysis-widget-kicker">Mean relevance</p>
+      <p class="analysis-widget-value" id="metric-relevance">—</p>
+      <p class="analysis-widget-foot muted">0–10 embedding signal</p>
+    </div>
+
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-6">
+      <p class="analysis-widget-title">Coding scheme #1 — quality tiers</p>
+      <div class="analysis-chart-canvas-wrap">
+        <canvas id="chart-quality-donut" aria-label="Donut chart of quality code counts"></canvas>
+      </div>
+    </div>
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-6">
+      <p class="analysis-widget-title">Coding scheme #2 — grade fit tiers</p>
+      <div class="analysis-chart-canvas-wrap">
+        <canvas id="chart-grade-donut" aria-label="Donut chart of appropriateness code counts"></canvas>
+      </div>
+    </div>
+
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12">
+      <p class="analysis-widget-title">Supplementary embedding means</p>
+      <div class="analysis-chart-canvas-wrap analysis-chart-canvas-wrap--short">
+        <canvas id="chart-overall-bars" aria-label="Horizontal bar chart of mean relevance quality and humor"></canvas>
+      </div>
+    </div>
+
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12">
+      <p class="analysis-widget-title">Means by {{ compare_by_label }}</p>
+      <div class="analysis-chart-canvas-wrap analysis-chart-canvas-wrap--tall">
+        <canvas id="chart-by-category" aria-label="Grouped bar chart by comparison category"></canvas>
+      </div>
+    </div>
+
+    {% if chart_payload.get('single_exam') %}
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12">
+      <p class="analysis-widget-title">Single session — per question</p>
+      <div class="analysis-chart-canvas-wrap analysis-chart-canvas-wrap--tall">
+        <canvas id="chart-single-session" aria-label="Line chart of codes and relevance by question"></canvas>
+      </div>
+    </div>
+    {% endif %}
+  </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="/static/question_analysis_charts.js" defer></script>
+{% elif run_analysis and chart_payload is not none and chart_payload.get('empty') %}
+<aside class="callout callout-tip" role="status">
+  <strong>No chart data:</strong> this filter returned no questions to score. Adjust filters or generate exams, then run again.
+</aside>
 {% endif %}
 
+{% if run_analysis %}
 {% if category_records %}
 <div class="panel panel-table">
   <h2 class="panel-title">Category summary</h2>
@@ -185,14 +219,14 @@
 </div>
 {% endif %}
 
-<div class="panel panel-table analysis-detail-panel">
+<div class="panel analysis-detail-panel">
   <div class="analysis-detail-header">
     <h2 class="panel-title">Question-level detail</h2>
-    <span class="pill pill-sm analysis-detail-pill">Row-by-row breakdown</span>
+    <span class="pill pill-sm analysis-detail-pill">Click a row to expand</span>
   </div>
   <p class="muted small-print analysis-detail-subtitle">
-    Read each row from left to right: exam/session context → assigned 4-point codes → rationale text →
-    supplementary embedding signals (0–10) → prompt excerpt.
+    Each card is a question instance: collapsed view shows session, question number, codes, and a short prompt preview.
+    Expand for full coding rationale, 0–10 supplementary notes, and the full prompt text.
   </p>
   <div class="analysis-legend">
     <span><strong>Qly:</strong> Essay question quality code (1–4)</span>
@@ -200,31 +234,26 @@
     <span><strong>Rel:</strong> Relevance signal (0–10)</span>
     <span><strong>Emb.Q:</strong> Embedding quality signal (0–10)</span>
   </div>
-  <div class="table-scroll">
-    <table class="data-table analysis-detail-table">
-      <thead>
-        <tr>
-          <th scope="col">Session</th>
-          <th scope="col">Q</th>
-          <th scope="col">4-point codes</th>
-          <th scope="col">Coding rationale</th>
-          <th scope="col">0–10 supplementary</th>
-          <th scope="col">Prompt excerpt</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in analysis_rows %}
-        <tr>
-          <td class="nowrap">
-            <a href="/professor/exam/{{ a.session_id }}">#{{ a.session_id }}</a>
-            {% if a.exam_code %}<span class="mono-tight muted"> {{ a.exam_code }}</span>{% endif %}
-          </td>
-          <td>{{ a.question_index + 1 }}</td>
-          <td class="nowrap">
+  <div class="analysis-detail-list">
+    {% for a in analysis_rows %}
+    <details class="analysis-detail-card">
+      <summary class="analysis-detail-card-summary">
+        <span class="analysis-detail-card-chevron" aria-hidden="true"></span>
+        <span class="analysis-detail-card-meta">
+          <a class="analysis-detail-session-link" href="/professor/exam/{{ a.session_id }}">#{{ a.session_id }}</a>
+          {% if a.exam_code %}<span class="mono-tight muted analysis-detail-exam-code">{{ a.exam_code }}</span>{% endif %}
+          <span class="analysis-detail-q-label">Q{{ a.question_index + 1 }}</span>
+          <span class="analysis-detail-card-pills">
             <span class="pill pill-sm" title="Essay question quality">Qly {{ a.quality_code }}/4</span>
             <span class="pill pill-sm" title="Grade appropriateness">Lvl {{ a.grade_appropriateness_code }}/4</span>
-          </td>
-          <td class="analysis-notes-cell">
+          </span>
+        </span>
+        <span class="analysis-detail-card-teaser muted">{{ a.essay_question[:140] }}{% if a.essay_question|length > 140 %}…{% endif %}</span>
+      </summary>
+      <div class="analysis-detail-card-body">
+        <div class="analysis-detail-card-columns">
+          <div class="analysis-detail-card-col">
+            <p class="analysis-widget-title analysis-detail-section-title">Coding rationale</p>
             <div class="analysis-note-block">
               <p class="analysis-note-label">Quality code rationale</p>
               <p>{{ a.quality_code_rationale }}</p>
@@ -237,8 +266,9 @@
               <p class="analysis-note-label">Tone note</p>
               <p>{{ a.humor_notes }}</p>
             </div>
-          </td>
-          <td class="analysis-notes-cell small-print">
+          </div>
+          <div class="analysis-detail-card-col">
+            <p class="analysis-widget-title analysis-detail-section-title">0–10 supplementary</p>
             <div class="analysis-note-block">
               <p class="analysis-note-label">Rel {{ "%.1f"|format(a.relevance_score) }}</p>
               <p>{{ a.relevance_notes }}</p>
@@ -247,14 +277,21 @@
               <p class="analysis-note-label">Emb.Q {{ "%.1f"|format(a.quality_score) }}</p>
               <p>{{ a.quality_notes }}</p>
             </div>
-          </td>
-          <td class="muted essay-excerpt">{{ a.essay_question[:320] }}{% if a.essay_question|length > 320 %}…{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="muted center">No rows for this filter. Generate a few exams, then try again.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+          </div>
+        </div>
+        <div class="analysis-detail-prompt-wrap">
+          <p class="analysis-widget-title analysis-detail-section-title">Prompt</p>
+          <div class="analysis-note-block analysis-detail-prompt-block">
+            <p class="muted essay-excerpt">{{ a.essay_question }}</p>
+          </div>
+        </div>
+      </div>
+    </details>
+    {% else %}
+    <div class="analysis-detail-card analysis-detail-card--empty muted" role="status" aria-live="polite">
+      No rows for this filter. Generate a few exams, then try again.
+    </div>
+    {% endfor %}
   </div>
 </div>
 {% endif %}

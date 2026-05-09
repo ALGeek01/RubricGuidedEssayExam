@@ -39,7 +39,7 @@ from app.perf_logging import log_performance_event
 from app.question_analysis import (
     analysis_dataframe,
     analyze_questions_semantic,
-    build_category_charts_base64,
+    build_analysis_chart_payload,
     summarize_by_category,
 )
 from app.errors import TogetherApiError
@@ -1466,7 +1466,7 @@ def professor_question_analysis(
     error_message: str | None = None
     analysis_rows = []
     methodology_note = ""
-    charts: dict[str, str] = {}
+    chart_payload: dict | None = None
     category_table = None
     recent_sessions = (
         db.query(ExamSession)
@@ -1483,10 +1483,11 @@ def professor_question_analysis(
             )
             df = analysis_dataframe(analysis_rows)
             category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
-            charts = build_category_charts_base64(analysis_rows, compare_by=compare_key)
+            chart_payload = build_analysis_chart_payload(df, compare_by=compare_key)
         except RuntimeError as e:
             error_message = str(e)
             methodology_note = ""
+            chart_payload = None
     else:
         methodology_note = (
             "Set filters and click Run analysis to start scoring. "
@@ -1512,7 +1513,7 @@ def professor_question_analysis(
             "run_analysis": should_run_analysis,
             "analysis_rows": analysis_rows,
             "methodology_note": methodology_note,
-            "charts": charts,
+            "chart_payload": chart_payload,
             "category_records": category_records,
             "compare_by_label": compare_options.get(compare_key, "Category"),
             "error_message": error_message,

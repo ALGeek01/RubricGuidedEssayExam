@@ -349,6 +349,65 @@ def analysis_dataframe(analysis: list[QuestionAnalysisRow]) -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
+def build_analysis_chart_payload(df: pd.DataFrame, compare_by: str = "education_level") -> dict[str, Any]:
+    """JSON-serializable metrics for client-side Chart.js dashboard widgets."""
+    if df.empty:
+        return {"empty": True}
+    qc = df["quality_code"].astype(int).value_counts().reindex(range(1, 5), fill_value=0)
+    gc = df["grade_appropriateness_code"].astype(int).value_counts().reindex(range(1, 5), fill_value=0)
+    means = df[["relevance_score", "quality_score", "humor_score"]].mean()
+    out: dict[str, Any] = {
+        "empty": False,
+        "total": int(len(df)),
+        "sessions": int(df["session_id"].nunique()),
+        "quality_freq": [int(qc[i]) for i in range(1, 5)],
+        "grade_freq": [int(gc[i]) for i in range(1, 5)],
+        "overall": {
+            "relevance": float(round(means["relevance_score"], 2)),
+            "quality": float(round(means["quality_score"], 2)),
+            "humor": float(round(means["humor_score"], 2)),
+        },
+        "compare_by": compare_by,
+        "categories": [],
+        "single_exam": None,
+    }
+    cat_df = summarize_by_category(df, compare_by=compare_by)
+    if not cat_df.empty:
+        group_key = compare_by if compare_by in (
+            "education_level",
+            "llm_mode",
+            "session_id",
+            "quality_code",
+            "grade_appropriateness_code",
+        ) else "education_level"
+        for _, row in cat_df.iterrows():
+            if group_key == "llm_mode":
+                label = str(row["llm_mode"])
+            else:
+                label = str(row[group_key])
+                if "llm_mode" in cat_df.columns and group_key != "llm_mode":
+                    label = f"{label} ({row['llm_mode']})"
+            out["categories"].append(
+                {
+                    "label": label[:56],
+                    "mean_quality_code": float(round(row["mean_quality_code"], 3)),
+                    "mean_grade_approp_code": float(round(row["mean_grade_approp_code"], 3)),
+                    "relevance_score": float(round(row["relevance_score"], 2)),
+                    "quality_score": float(round(row["quality_score"], 2)),
+                    "humor_score": float(round(row["humor_score"], 2)),
+                }
+            )
+    if df["session_id"].nunique() == 1:
+        d3 = df.sort_values("question_index")
+        out["single_exam"] = {
+            "labels": [f"Q{int(i) + 1}" for i in d3["question_index"]],
+            "quality_code": [int(x) for x in d3["quality_code"]],
+            "grade_code": [int(x) for x in d3["grade_appropriateness_code"]],
+            "relevance": [float(round(x, 2)) for x in d3["relevance_score"]],
+        }
+    return out
+
+
 def summarize_by_category(df: pd.DataFrame, compare_by: str = "education_level") -> pd.DataFrame:
     """Aggregate summary by selected category (+ llm_mode when useful)."""
     if df.empty:
