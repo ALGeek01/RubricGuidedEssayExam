@@ -1,3 +1,13 @@
+# Local env / API keys — never commit real secrets (.env.example is the only tracked template).
+.env
+.env.*
+!.env.example
+
+# If RGEE_CREDENTIAL_DATA_DIR points inside this repo, ignore ciphertext + Fernet key material from together_credentials.py.
+.rgee-credentials/
+**/together_api_key.enc
+**/.rgee_machine_fernet
+
 .venv/
 .venv_ci/
 __pycache__/
@@ -6,7 +16,6 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
-.env
 instructor_credentials.json
 .Python
 .pytest_cache/

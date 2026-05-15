@@ -78,11 +78,11 @@
       <input type="hidden" name="llm_mode" id="llm_mode" value="{% if default_toggle_mock %}mock{% else %}live{% endif %}">
       <div class="mode-toggle-wrap">
         <button type="button" class="mode-pill {% if default_toggle_mock %}is-active{% endif %}" id="btn-mock" aria-pressed="{% if default_toggle_mock %}true{% else %}false{% endif %}">Mock (testing)</button>
-        <button type="button" class="mode-pill {% if not default_toggle_mock %}is-active{% endif %}" id="btn-live" aria-pressed="{% if not default_toggle_mock %}true{% else %}false{% endif %}" {% if not api_key_configured %}disabled title="Configure TOGETHER_API_KEY on the server"{% endif %}>Production</button>
+        <button type="button" class="mode-pill {% if not default_toggle_mock %}is-active{% endif %}" id="btn-live" aria-pressed="{% if not default_toggle_mock %}true{% else %}false{% endif %}" {% if not api_key_configured %}disabled title="Configure Together API key (Instructor → Together.ai API key page or TOGETHER_API_KEY in .env)"{% endif %}>Production</button>
       </div>
       <span class="hint" id="llm-mode-hint">
         {% if not api_key_configured %}
-        <strong>Mock only:</strong> add <code>TOGETHER_API_KEY</code> to the server <code>.env</code> to enable Production (live Together.ai calls).
+        <strong>Mock only:</strong> sign in at <code>/professor</code>, open <strong>Together.ai API key</strong>, or set <code>TOGETHER_API_KEY</code> in <code>.env</code> (least preferred vs system keychain / encrypted vault).
         {% else %}
         <strong>Mock</strong> uses fixed demo questions and scores (no API usage). <strong>Production</strong> calls Together.ai using the server API key.
         Production uses one call to create the first question, then <strong>one combined call per answer</strong> (grade + next question, or grade + final summary)—fewer round trips than separate grade and generate calls.

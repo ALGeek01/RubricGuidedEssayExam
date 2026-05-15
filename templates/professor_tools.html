@@ -15,6 +15,16 @@
 </section>
 
 <div class="devtools-grid">
+  <a href="/professor/together-credentials" class="panel devtools-card panel-link-card">
+    <h2 class="panel-title">Together.ai API key</h2>
+    <p class="muted">
+      Store your Together <strong>Project API key</strong> in the OS keychain when possible —
+      avoids plaintext secrets in <code>.env</code>. Falls back to an AES-protected credential file tied to this account.
+      Required for Production (live grading) alongside <code>MOCK_LLM=0</code> defaults.
+    </p>
+    <span class="link-arrow">Secure storage settings →</span>
+  </a>
+
   <a href="/professor/question-analysis" class="panel devtools-card panel-link-card">
     <h2 class="panel-title">Question analysis</h2>
     <p class="muted">

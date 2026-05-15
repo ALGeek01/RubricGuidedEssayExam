@@ -18,6 +18,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.together_credentials import (
+    clear_vault_credentials,
+    resolved_together_api_key,
+    store_together_api_key,
+    together_credentials_snapshot,
+)
 from app.instructor_auth import (
     SESSION_KEY,
     credentials_path,
@@ -159,6 +165,15 @@ def _safe_instructor_next_url(next_url: str) -> str:
     if not isinstance(next_url, str) or not next_url.startswith("/") or next_url.startswith("//"):
         return "/professor"
     return next_url
+
+
+def _pop_together_cred_notice(request: Request) -> dict[str, str] | None:
+    raw = request.session.pop("rgee_together_cred_notice", None)
+    return raw if isinstance(raw, dict) else None
+
+
+def _set_together_cred_notice(request: Request, *, kind: str, message: str) -> None:
+    request.session["rgee_together_cred_notice"] = {"kind": kind, "message": message}
 
 
 def _instructor_login_redirect(request: Request) -> RedirectResponse | None:
@@ -650,7 +665,7 @@ def start_exam_choice(request: Request):
 @app.get("/start/generated", response_class=HTMLResponse)
 def start_generated_exam_page(request: Request):
     s = get_settings()
-    has_key = bool(str(s.together_api_key or "").strip())
+    has_key = bool(resolved_together_api_key())
     default_toggle_mock = not has_key or s.mock_llm
     return templates.TemplateResponse(
         request,
@@ -748,10 +763,11 @@ def exam_start(
         raise HTTPException(400, "Invalid education level")
     mode = llm_mode.strip().lower()
     use_mock = mode != "live"
-    if not use_mock and not str(get_settings().together_api_key or "").strip():
+    if not use_mock and not resolved_together_api_key():
         raise HTTPException(
             400,
-            "Production mode requires TOGETHER_API_KEY in the server .env file.",
+            "Production mode requires a Together API key. Signed-in instructors can save one under "
+            "/professor/together-credentials or set TOGETHER_API_KEY in .env.",
         )
     n = max(1, min(20, int(num_questions)))
 
@@ -1541,6 +1557,48 @@ def professor_login_post(
 def professor_logout(request: Request):
     request.session.pop(SESSION_KEY, None)
     return RedirectResponse(url="/professor/login", status_code=303)
+
+
+@app.get("/professor/together-credentials", response_class=HTMLResponse)
+def professor_together_credentials_get(request: Request):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    notice = _pop_together_cred_notice(request)
+    return templates.TemplateResponse(
+        request,
+        "professor_together_credentials.html",
+        {
+            "notice": notice,
+            "snapshot": together_credentials_snapshot(),
+        },
+    )
+
+
+@app.post("/professor/together-credentials/save", response_class=HTMLResponse)
+def professor_together_credentials_save(
+    request: Request,
+    together_api_key: str = Form(""),
+):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    try:
+        _, detail_msg = store_together_api_key(together_api_key)
+        _set_together_cred_notice(request, kind="ok", message=detail_msg)
+    except ValueError as e:
+        _set_together_cred_notice(request, kind="error", message=str(e))
+    return RedirectResponse(url="/professor/together-credentials", status_code=303)
+
+
+@app.post("/professor/together-credentials/clear", response_class=HTMLResponse)
+def professor_together_credentials_clear(request: Request):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    msg = clear_vault_credentials()
+    _set_together_cred_notice(request, kind="ok", message=msg)
+    return RedirectResponse(url="/professor/together-credentials", status_code=303)
 
 
 @app.get("/professor", response_class=HTMLResponse)

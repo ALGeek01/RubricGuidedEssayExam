@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
+from app.together_credentials import resolved_together_api_key
 from app.perf_logging import log_performance_event
 from app.errors import TogetherApiError
 from app.education_levels import guidance_for_level, label_for_level
@@ -194,11 +195,11 @@ def _chat_completion(
 ) -> str:
     t0 = time.perf_counter()
     s = get_settings()
-    api_key = str(s.together_api_key or "").strip()
+    api_key = resolved_together_api_key()
     if not api_key:
         raise TogetherApiError(
-            "TOGETHER_API_KEY is missing. Add it to your .env file next to requirements.txt, "
-            "or use Mock mode on the home page.",
+            "Together.ai API key is missing. Signed-in instructors can save it securely under "
+            "/professor/together-credentials, or set TOGETHER_API_KEY in .env. Otherwise use Mock mode.",
             http_status=503,
         )
     url = f"{s.together_base_url.rstrip('/')}/chat/completions"
@@ -233,7 +234,8 @@ def _chat_completion(
                 "Create a new Project API key at "
                 "https://api.together.ai/settings/api-keys "
                 "(sign in → your project → API Keys), copy the full key, "
-                "and set TOGETHER_API_KEY in .env with no extra spaces or quotes. "
+                "paste the full key again under Instructor → Together.ai API key "
+                "(or set TOGETHER_API_KEY in .env) with no extra spaces or quotes. "
                 "Keys are only shown once when created. "
                 "Until this is fixed, use Mock mode on the home page.",
                 http_status=503,
