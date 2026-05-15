@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Nominated exams · Question analysis{% endblock %}
+{% block wrap_modifier %} wrap--analysis{% endblock %}
+{% block body %}
+<section class="hero hero-compact">
+  <div class="hero-row">
+    <h1 class="hero-title">Nominated exams</h1>
+    <form method="post" action="/professor/logout" class="hero-inline-form">
+      <button type="submit" class="btn btn-secondary">Log out</button>
+    </form>
+  </div>
+  <p class="hero-lead muted small-print analysis-subpage-nav">
+    <a href="{{ url_analysis_scored }}">← Semantic analysis results</a>
+    <span aria-hidden="true"> · </span>
+    <a href="{{ url_manual_feedback }}">Manual feedback</a>
+  </p>
+</section>
+
+{% if nominated_created %}
+<aside class="callout callout-tip" role="status">
+  <strong>Nominated exam published.</strong> Share this <strong>8-character exam ID</strong> with students (with
+  <a href="/start/nominated">Take a nominated exam</a> on the public site): <span class="mono-tight">{{ nominated_created }}</span>
+</aside>
+{% endif %}
+
+{% if nominated_error == "no_questions" %}
+<p class="error-text" role="alert">Select at least one question to publish.</p>
+{% elif nominated_error == "invalid_questions" %}
+<p class="error-text" role="alert">One or more question ids were not found. Refresh and try again.</p>
+{% elif nominated_error == "mixed_sessions" %}
+<p class="error-text" role="alert">All selected questions must come from the same exam session.</p>
+{% elif nominated_error %}
+<p class="error-text" role="alert">{{ nominated_error }}</p>
+{% endif %}
+
+{% if methodology_note %}
+<aside class="callout callout-tip" role="note">
+  <strong>Method:</strong> {{ methodology_note }}
+</aside>
+{% endif %}
+
+{% if nomination_panel_sessions %}
+<div class="panel analysis-extra-panel analysis-nomination-panel" id="exam-nomination-sessions">
+  <h2 class="panel-title">Sessions in this analysis run</h2>
+  <p class="muted small-print">
+    Next to each session: whether a <strong>nominated exam</strong> has already been published from that session’s questions
+    (students start it from the home “Start exam” flow with their student ID and the nominated exam ID).
+  </p>
+  <ul class="analysis-nomination-list">
+    {% for s in nomination_panel_sessions %}
+    <li class="analysis-nomination-item">
+      <span class="analysis-nomination-meta">
+        <a href="/professor/exam/{{ s.id }}">Session #{{ s.id }}</a>
+        <span class="mono-tight muted">{{ s.exam_code or "—" }}</span>
+        <span class="muted">{{ s.student.external_student_id }}</span>
+      </span>
+      {% if s.id in sessions_published_nominated_exam %}
+      <span class="badge badge-nominated-published">Nominated exam published</span>
+      {% else %}
+      <span class="badge badge-nominated-unpublished">No nominated exam yet</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if analysis_rows %}
+<form
+  class="panel analysis-extra-panel"
+  method="post"
+  action="/professor/question-analysis/create-nominated-exam"
+  id="create-nominated-exam-form"
+>
+  <h2 class="panel-title">Publish a nominated exam from scored questions</h2>
+  <p class="muted small-print">
+    Choose one or more rows from <strong>this filtered analysis</strong>. Manual feedback saved on
+    <a href="{{ url_manual_feedback }}">Manual feedback</a> is copied into the student-facing notes for each question.
+    All selections must belong to the <strong>same</strong> exam session.
+  </p>
+  <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+  <div class="field field-span-2">
+    <label for="nominated_title">Optional title (for your records)</label>
+    <input type="text" id="nominated_title" name="title" maxlength="512" placeholder="e.g. Midterm practice set A">
+  </div>
+  <div class="panel-table-wrap">
+    <table class="analysis-nominated-pick-table">
+      <thead>
+        <tr>
+          <th scope="col">Include</th>
+          <th scope="col">Session</th>
+          <th scope="col">Q</th>
+          <th scope="col">Essay prompt (trimmed)</th>
+          <th scope="col">Instructor manual note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in analysis_rows %}
+        <tr>
+          <td>
+            <input type="checkbox" name="question_id" value="{{ a.question_id }}">
+          </td>
+          <td class="mono-tight">{{ a.session_id }}</td>
+          <td>{{ a.question_index + 1 }}</td>
+          <td>{{ a.essay_question[:220] }}{% if a.essay_question|length > 220 %}…{% endif %}</td>
+          <td class="muted small-print">{% set note = feedback_by_question.get(a.question_id, '') %}{{ (note or '—')[:400] }}{% if note|length > 400 %}…{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Publish nominated exam</button>
+  </div>
+</form>
+{% else %}
+<aside class="callout callout-tip" role="status">
+  <strong>No scored rows here.</strong> Run analysis on <a href="{{ url_analysis_scored }}">Question analysis</a> with filters that return questions, then open this page again (your filter query is preserved in the links above).
+</aside>
+{% endif %}
+{% endblock %}

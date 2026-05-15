@@ -64,6 +64,8 @@ class ExamSession(Base):
     exam_code: Mapped[str] = mapped_column(String(5), unique=True, index=True)
     # easy | balanced | strict | insane — controls LLM grading prompt (see app.grading_strictness).
     grading_strictness: Mapped[str] = mapped_column(String(32), default=DEFAULT_GRADING_STRICTNESS)
+    # Integer key into nominated_exams.id when this session was spawned from a curated template (no FK: avoids create_all cycles on SQLite).
+    nominated_exam_template_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     student: Mapped["Student"] = relationship(back_populates="sessions", lazy="joined")
     questions: Mapped[list["ExamQuestion"]] = relationship(back_populates="session", cascade="all, delete-orphan")
@@ -131,7 +133,7 @@ class QuestionAnalysisFeedback(Base):
 
 
 class NominatedExamSession(Base):
-    """Sessions flagged for quality-improvement tracking (metadata only; does not alter exam generation)."""
+    """Legacy: previously used for instructor flags; retained for older databases."""
 
     __tablename__ = "nominated_exam_sessions"
 
@@ -145,6 +147,60 @@ class NominatedExamSession(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+class NominatedExam(Base):
+    """Instructor-published fixed exam template students can start with student ID + nominated exam ID."""
+
+    __tablename__ = "nominated_exams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    access_code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
+    title: Mapped[str] = mapped_column(Text, default="")
+    source_session_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    professor_domain: Mapped[str] = mapped_column(Text)
+    education_level: Mapped[str] = mapped_column(String(64), default=DEFAULT_EDUCATION_LEVEL_ID)
+    use_mock_llm: Mapped[bool] = mapped_column(Boolean, default=True)
+    grading_strictness: Mapped[str] = mapped_column(String(32), default=DEFAULT_GRADING_STRICTNESS)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    snapshot_questions: Mapped[list["NominatedExamSnapshotQuestion"]] = relationship(
+        back_populates="nominated_exam",
+        cascade="all, delete-orphan",
+    )
+
+
+class NominatedExamSnapshotQuestion(Base):
+    """Frozen question rows copied at publish time (including optional instructor manual notes)."""
+
+    __tablename__ = "nominated_exam_snapshot_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nominated_exam_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("nominated_exams.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_question_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("exam_questions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    question_index: Mapped[int] = mapped_column(Integer)
+    background_information: Mapped[str] = mapped_column(Text)
+    essay_question: Mapped[str] = mapped_column(Text)
+    grading_rubric: Mapped[str] = mapped_column(Text)
+    domain_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instructor_note: Mapped[str] = mapped_column(Text, default="")
+
+    nominated_exam: Mapped["NominatedExam"] = relationship(back_populates="snapshot_questions")
 
 
 class PerformanceLog(Base):
@@ -193,9 +249,17 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 EXAM_CODE_LENGTH = 5
 EXAM_CODE_ALPHABET = string.ascii_uppercase + string.digits
 
+NOMINATED_ACCESS_CODE_LENGTH = 8
+NOMINATED_ACCESS_CODE_ALPHABET = string.ascii_uppercase + string.digits
+
 
 def _is_valid_exam_code(code: str) -> bool:
     return len(code) == EXAM_CODE_LENGTH and all(ch in EXAM_CODE_ALPHABET for ch in code)
+
+
+def _is_valid_nominated_access_code(code: str) -> bool:
+    c = (code or "").strip().upper()
+    return len(c) == NOMINATED_ACCESS_CODE_LENGTH and all(ch in NOMINATED_ACCESS_CODE_ALPHABET for ch in c)
 
 
 def generate_unique_exam_code(
@@ -210,6 +274,22 @@ def generate_unique_exam_code(
         if not exists:
             return code
     raise RuntimeError("Unable to generate unique exam code")
+
+
+def generate_unique_nominated_access_code(
+    db: Session, *, reserved: set[str] | None = None, max_attempts: int = 256
+) -> str:
+    reserved_codes = reserved or set()
+    for _ in range(max_attempts):
+        code = "".join(
+            secrets.choice(NOMINATED_ACCESS_CODE_ALPHABET) for _ in range(NOMINATED_ACCESS_CODE_LENGTH)
+        )
+        if code in reserved_codes:
+            continue
+        exists = db.query(NominatedExam.id).filter(NominatedExam.access_code == code).first()
+        if not exists:
+            return code
+    raise RuntimeError("Unable to generate unique nominated exam access code")
 
 
 def get_or_create_student(db: Session, external_student_id: str) -> Student:
@@ -554,7 +634,36 @@ def init_db() -> None:
     Student.__table__.create(bind=engine, checkfirst=True)
     _migrate_sqlite_schema()
     _migrate_students_and_exam_session_fk()
+    _migrate_add_nominated_exam_template_id_column()
     _backfill_exam_codes_and_enforce_unique_index()
+
+
+def _migrate_add_nominated_exam_template_id_column() -> None:
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    if "exam_sessions" not in tables:
+        return
+    col_names = {c["name"] for c in insp.get_columns("exam_sessions")}
+    if "nominated_exam_template_id" in col_names:
+        return
+    dialect = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect == "sqlite":
+            try:
+                conn.execute(text("ALTER TABLE exam_sessions ADD COLUMN nominated_exam_template_id INTEGER"))
+            except Exception as e:
+                msg = str(e).lower()
+                if "duplicate column" not in msg and "already exists" not in msg:
+                    raise
+        elif dialect == "postgresql":
+            conn.execute(text("ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS nominated_exam_template_id INTEGER"))
+        else:
+            try:
+                conn.execute(text("ALTER TABLE exam_sessions ADD COLUMN nominated_exam_template_id INTEGER"))
+            except Exception as e:
+                msg = str(e).lower()
+                if "duplicate column" not in msg and "already exists" not in msg:
+                    raise
 
 
 def get_db():

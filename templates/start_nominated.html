@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Nominated exam{% endblock %}
+{% block body %}
+<section class="hero hero-compact">
+  <h1 class="hero-title">Take a nominated exam</h1>
+  <p class="hero-lead">
+    Enter your student ID and the <strong>nominated exam ID</strong> your instructor gave you (eight letters or digits).
+  </p>
+  <aside
+    class="resume-id-banner"
+    role="region"
+    aria-labelledby="nominated-exam-id-banner-title"
+  >
+    <p class="resume-id-banner-kicker" id="nominated-exam-id-banner-title">Nominated exam ID</p>
+    <p class="resume-id-banner-lead">
+      This is <strong>not</strong> the short code used to resume a random exam you already started. It is the separate
+      <strong>8-character</strong> code published when your instructor created a nominated exam from analysis.
+    </p>
+    <p class="resume-id-banner-body">
+      If you need the code, ask your instructor. To continue a normal in-progress exam, use <a href="/resume">Resume exam</a>.
+    </p>
+  </aside>
+  <p class="muted small-print">
+    <a href="/start">← Other start options</a>
+  </p>
+</section>
+
+<form class="panel form-card" method="post" action="/exam/start-nominated">
+  <h2 class="panel-title">Your details</h2>
+  <div class="form-grid">
+    <div class="field">
+      <label for="student_id">Student ID <span class="req">*</span></label>
+      <input
+        type="text"
+        id="student_id"
+        name="student_id"
+        required
+        maxlength="256"
+        value="{{ student_id }}"
+        placeholder="e.g. jdoe_001"
+        autocomplete="username"
+      >
+    </div>
+    <div class="field">
+      <label for="exam_id">Nominated exam ID <span class="req">*</span></label>
+      <input
+        type="text"
+        id="exam_id"
+        name="exam_id"
+        required
+        maxlength="8"
+        minlength="8"
+        value="{{ exam_id }}"
+        placeholder="8 letters or digits"
+        autocomplete="off"
+        style="text-transform: uppercase;"
+      >
+    </div>
+  </div>
+  {% if error_message %}
+  <p class="muted" style="color:#fca5a5;">{{ error_message }}</p>
+  {% endif %}
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Begin nominated exam</button>
+  </div>
+</form>
+{% endblock %}

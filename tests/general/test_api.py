@@ -16,7 +16,11 @@ def test_home(client: TestClient):
 def test_start_page_loads(client: TestClient):
     r = client.get("/start")
     assert r.status_code == 200
-    assert b"education_level" in r.content or b"Education level" in r.content
+    assert b"/start/generated" in r.content
+    assert b"/start/nominated" in r.content
+    r2 = client.get("/start/generated")
+    assert r2.status_code == 200
+    assert b"education_level" in r2.content or b"Education level" in r2.content
 
 
 def test_resume_page_loads(client: TestClient):
@@ -395,6 +399,8 @@ def test_professor_requires_login(client: TestClient):
 
     assert client.get("/professor/tools", follow_redirects=False).status_code == 303
     assert client.get("/professor/question-analysis", follow_redirects=False).status_code == 303
+    assert client.get("/professor/question-analysis/nomination", follow_redirects=False).status_code == 303
+    assert client.get("/professor/question-analysis/manual-feedback", follow_redirects=False).status_code == 303
     rlog = client.get("/performance-log", follow_redirects=False)
     assert rlog.status_code == 303
     assert "/professor/login" in (rlog.headers.get("location") or "")
@@ -527,3 +533,84 @@ def test_answer_invalid_session(client: TestClient):
     # Idempotent: duplicate submit after exam completed → redirect to results (not 400).
     assert r.status_code == 303
     assert r.headers["location"] == f"/exam/{session_id}/results"
+
+
+def test_nominated_exam_publish_and_student_start(client: TestClient, logged_in_instructor: TestClient):
+    from app.database import ExamQuestion, SessionLocal
+
+    r0 = client.post(
+        "/exam/start",
+        data={
+            "student_id": "tpl-source",
+            "professor_domain": "Nominated template domain.",
+            "num_questions": "2",
+        },
+        follow_redirects=False,
+    )
+    sid_src = int(r0.headers["location"].split("/exam/")[1].split("/")[0])
+    client.post(
+        f"/exam/{sid_src}/answer",
+        data={"answer": "first answer for nominee test."},
+        follow_redirects=True,
+    )
+    db = SessionLocal()
+    try:
+        qrows = (
+            db.query(ExamQuestion)
+            .filter(ExamQuestion.session_id == sid_src)
+            .order_by(ExamQuestion.question_index.asc())
+            .all()
+        )
+        assert len(qrows) == 2
+        qids = [qrows[0].id, qrows[1].id]
+    finally:
+        db.close()
+
+    from urllib.parse import urlencode
+
+    body = urlencode(
+        [
+            ("title", "Fixture nominated"),
+            ("next", "/professor/question-analysis/nomination?run=1"),
+            ("question_id", str(qids[0])),
+            ("question_id", str(qids[1])),
+        ]
+    )
+    r_pub = logged_in_instructor.post(
+        "/professor/question-analysis/create-nominated-exam",
+        content=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        follow_redirects=False,
+    )
+    assert r_pub.status_code == 303
+    loc = r_pub.headers["location"]
+    assert "nominated_created=" in loc
+    code = loc.split("nominated_created=")[-1].split("&")[0]
+    assert len(code) == 8
+
+    r_bad = client.post(
+        "/exam/start-nominated",
+        data={"student_id": "stu-nom", "exam_id": "BAD1"},
+    )
+    assert r_bad.status_code == 400
+
+    r_start = client.post(
+        "/exam/start-nominated",
+        data={"student_id": "stu-nom", "exam_id": code},
+        follow_redirects=False,
+    )
+    assert r_start.status_code == 303
+    new_sid = int(r_start.headers["location"].split("/exam/")[1].split("/")[0])
+    assert client.get(f"/exam/{new_sid}/question").status_code == 200
+    client.post(
+        f"/exam/{new_sid}/answer",
+        data={"answer": "answer one"},
+        follow_redirects=True,
+    )
+    assert client.get(f"/exam/{new_sid}/question").status_code == 200
+    client.post(
+        f"/exam/{new_sid}/answer",
+        data={"answer": "answer two"},
+        follow_redirects=True,
+    )
+    assert client.get(f"/exam/{new_sid}/results").status_code == 200

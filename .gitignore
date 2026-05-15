@@ -1,4 +1,5 @@
 .venv/
+.venv_ci/
 __pycache__/
 *.py[cod]
 *.sqlite3

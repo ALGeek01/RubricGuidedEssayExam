@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Manual feedback · Question analysis{% endblock %}
+{% block wrap_modifier %} wrap--analysis{% endblock %}
+{% block body %}
+<section class="hero hero-compact">
+  <div class="hero-row">
+    <h1 class="hero-title">Manual feedback</h1>
+    <form method="post" action="/professor/logout" class="hero-inline-form">
+      <button type="submit" class="btn btn-secondary">Log out</button>
+    </form>
+  </div>
+  <p class="hero-lead muted small-print analysis-subpage-nav">
+    <a href="{{ url_analysis_scored }}">← Semantic analysis results</a>
+    <span aria-hidden="true"> · </span>
+    <a href="{{ url_nomination }}">Nominated exams</a>
+  </p>
+</section>
+
+{% if error_message %}
+<p class="error-text" role="alert">{{ error_message }}</p>
+{% endif %}
+
+{% if methodology_note %}
+<aside class="callout callout-tip" role="note">
+  <strong>Method:</strong> {{ methodology_note }}
+</aside>
+{% endif %}
+
+{% if analysis_rows %}
+<div class="panel analysis-extra-panel analysis-manual-feedback-panel" id="manual-feedback">
+  <h2 class="panel-title">Your notes per question</h2>
+  <p class="muted small-print">
+    Notes are stored on this server and are independent of the embedding scores on the <a href="{{ url_analysis_scored }}">semantic analysis</a> page.
+  </p>
+  <div class="analysis-feedback-list">
+    {% for a in analysis_rows %}
+    <div class="analysis-feedback-row">
+      <div class="analysis-feedback-row-head">
+        <span class="analysis-feedback-row-meta">
+          <a href="/professor/exam/{{ a.session_id }}">#{{ a.session_id }}</a>
+          {% if a.exam_code %}<span class="mono-tight muted">{{ a.exam_code }}</span>{% endif %}
+          <span class="analysis-detail-q-label">Q{{ a.question_index + 1 }}</span>
+          <span class="pill pill-sm">Qly {{ a.quality_code }}/4</span>
+          <span class="pill pill-sm">Lvl {{ a.grade_appropriateness_code }}/4</span>
+        </span>
+      </div>
+      <p class="muted small-print analysis-feedback-preview">{{ a.essay_question[:180] }}{% if a.essay_question|length > 180 %}…{% endif %}</p>
+      <form method="post" action="/professor/question-analysis/feedback" class="analysis-feedback-form">
+        <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <input type="hidden" name="session_id" value="{{ a.session_id }}">
+        <input type="hidden" name="question_id" value="{{ a.question_id }}">
+        <label class="field-label" for="instructor-note-{{ a.question_id }}">Your note for this question</label>
+        <textarea
+          class="field-input analysis-feedback-textarea"
+          name="instructor_note"
+          id="instructor-note-{{ a.question_id }}"
+          rows="3"
+          maxlength="20000"
+          placeholder="e.g. tighten scope, add context, or flag ambiguity…"
+        >{{ feedback_by_question.get(a.question_id, '') }}</textarea>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-secondary btn-sm">Save note</button>
+        </div>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<aside class="callout callout-tip" role="status">
+  <strong>No questions in this run.</strong> Open <a href="{{ url_analysis_scored }}">Question analysis</a>, choose filters, run analysis, then return here using the navigation links.
+</aside>
+{% endif %}
+{% endblock %}

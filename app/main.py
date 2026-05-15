@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import re
@@ -18,7 +17,6 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.analysis_agent_client import analyze_questions_via_agent
 from app.config import get_settings
 from app.instructor_auth import (
     SESSION_KEY,
@@ -31,23 +29,22 @@ from app.database import (
     ExamQuestion,
     ExamSession,
     FinalGrade,
-    NominatedExamSession,
+    NominatedExam,
+    NominatedExamSnapshotQuestion,
     PerformanceLog,
     QuestionAnalysisFeedback,
     Student,
+    _is_valid_nominated_access_code,
     generate_unique_exam_code,
+    generate_unique_nominated_access_code,
     get_db,
     get_or_create_student,
     init_db,
 )
 from app.perf_logging import log_performance_event
-from app.question_analysis import (
-    ANALYSIS_COMPARE_BY_HELP,
-    ANALYSIS_LLM_FILTER_HELP,
-    analysis_dataframe,
-    analyze_questions_semantic,
-    build_analysis_chart_payload,
-    summarize_by_category,
+from app.question_analysis_support import (
+    load_question_analysis_context,
+    normalize_question_analysis_params,
 )
 from app.errors import TogetherApiError
 from app.education_levels import (
@@ -67,6 +64,7 @@ from app.llm_service import (
     generate_ai_helper_reply,
     generate_question,
     generate_safe_hint,
+    grade_answer,
     grade_and_final_combined,
     grade_and_next_question_combined,
 )
@@ -92,7 +90,7 @@ def _exam_session_id_for_http_log(path: str, response: Response | None) -> int |
     sid = _exam_session_id_from_path(path)
     if sid is not None:
         return sid
-    if response is not None and path == "/exam/start":
+    if response is not None and path in ("/exam/start", "/exam/start-nominated"):
         loc = response.headers.get("location") or response.headers.get("Location")
         if loc:
             pth = urlparse(loc).path if "://" in loc else loc.split("?", 1)[0]
@@ -230,6 +228,19 @@ def _rubric_to_stored(rubric: list | str) -> str:
     if isinstance(rubric, list):
         return json.dumps(rubric, ensure_ascii=False)
     return str(rubric)
+
+
+def _merge_instructor_note_into_domain_notes(
+    domain_notes: str | None, instructor_note: str
+) -> str | None:
+    ins = (instructor_note or "").strip()
+    base = (domain_notes or "").strip()
+    if not ins:
+        return domain_notes if base else None
+    block = f"--- Instructor note ---\n{ins}"
+    if not base:
+        return block
+    return f"{base}\n\n{block}"
 
 
 def _prior_summary(session: ExamSession, db: Session) -> str:
@@ -632,7 +643,12 @@ def home(request: Request):
 
 
 @app.get("/start", response_class=HTMLResponse)
-def start_exam_page(request: Request):
+def start_exam_choice(request: Request):
+    return templates.TemplateResponse(request, "start_choose.html", {})
+
+
+@app.get("/start/generated", response_class=HTMLResponse)
+def start_generated_exam_page(request: Request):
     s = get_settings()
     has_key = bool(str(s.together_api_key or "").strip())
     default_toggle_mock = not has_key or s.mock_llm
@@ -647,6 +663,15 @@ def start_exam_page(request: Request):
             "grading_strictness_options": GRADING_STRICTNESS_OPTIONS,
             "default_grading_strictness": DEFAULT_GRADING_STRICTNESS,
         },
+    )
+
+
+@app.get("/start/nominated", response_class=HTMLResponse)
+def start_nominated_exam_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "start_nominated.html",
+        {"error_message": "", "student_id": "", "exam_id": ""},
     )
 
 
@@ -771,6 +796,101 @@ def exam_start(
     db.add(eq)
     db.commit()
 
+    return RedirectResponse(url=f"/exam/{session.id}/question", status_code=303)
+
+
+@app.post("/exam/start-nominated", response_class=HTMLResponse)
+def exam_start_nominated(
+    request: Request,
+    student_id: str = Form(""),
+    exam_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    sid = (student_id or "").strip()
+    nom_code = (exam_id or "").strip().upper()
+    if not sid or not nom_code:
+        missing = "student ID and nominated exam ID" if (not sid and not nom_code) else (
+            "student ID" if not sid else "nominated exam ID"
+        )
+        return templates.TemplateResponse(
+            request,
+            "start_nominated.html",
+            {
+                "error_message": f"Please enter your {missing}.",
+                "student_id": sid,
+                "exam_id": nom_code,
+            },
+            status_code=400,
+        )
+    if not _is_valid_nominated_access_code(nom_code):
+        return templates.TemplateResponse(
+            request,
+            "start_nominated.html",
+            {
+                "error_message": "Nominated exam ID must be exactly 8 letters or digits (from your instructor).",
+                "student_id": sid,
+                "exam_id": nom_code,
+            },
+            status_code=400,
+        )
+    tpl = db.query(NominatedExam).filter(NominatedExam.access_code == nom_code).one_or_none()
+    if not tpl:
+        return templates.TemplateResponse(
+            request,
+            "start_nominated.html",
+            {
+                "error_message": "No nominated exam was found for that exam ID.",
+                "student_id": sid,
+                "exam_id": nom_code,
+            },
+            status_code=404,
+        )
+    snaps = (
+        db.query(NominatedExamSnapshotQuestion)
+        .filter(NominatedExamSnapshotQuestion.nominated_exam_id == tpl.id)
+        .order_by(NominatedExamSnapshotQuestion.question_index.asc())
+        .all()
+    )
+    if not snaps:
+        return templates.TemplateResponse(
+            request,
+            "start_nominated.html",
+            {
+                "error_message": "That nominated exam has no questions yet. Ask your instructor to republish it.",
+                "student_id": sid,
+                "exam_id": nom_code,
+            },
+            status_code=404,
+        )
+    student_row = get_or_create_student(db, sid)
+    n = len(snaps)
+    session = ExamSession(
+        student_ref_id=student_row.id,
+        exam_code=generate_unique_exam_code(db),
+        professor_domain=tpl.professor_domain,
+        education_level=tpl.education_level,
+        use_mock_llm=tpl.use_mock_llm,
+        num_questions_planned=n,
+        current_question_index=0,
+        status="in_progress",
+        grading_strictness=tpl.grading_strictness,
+        nominated_exam_template_id=tpl.id,
+    )
+    db.add(session)
+    db.flush()
+    for snap in snaps:
+        merged = _merge_instructor_note_into_domain_notes(snap.domain_notes, snap.instructor_note)
+        db.add(
+            ExamQuestion(
+                session_id=session.id,
+                question_index=snap.question_index,
+                background_information=snap.background_information,
+                essay_question=snap.essay_question,
+                grading_rubric=snap.grading_rubric,
+                domain_notes=merged,
+            )
+        )
+    db.commit()
     return RedirectResponse(url=f"/exam/{session.id}/question", status_code=303)
 
 
@@ -1128,7 +1248,6 @@ def exam_answer(
     next_index = idx + 1
 
     if next_index < session.num_questions_planned:
-        # Idempotent: another request may have already created the next question (double-submit).
         existing_next = (
             db.query(ExamQuestion)
             .filter(
@@ -1137,12 +1256,65 @@ def exam_answer(
             )
             .one_or_none()
         )
-        if existing_next:
+        if existing_next and q.graded_state_p_json:
             db.refresh(session)
             if session.current_question_index != next_index:
                 session.current_question_index = next_index
                 db.add(session)
                 db.commit()
+            return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
+
+        if not existing_next:
+            try:
+                db.flush()
+            except OperationalError as exc:
+                db.rollback()
+                if _is_sqlite_locked_error(exc):
+                    return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
+                raise
+
+            try:
+                prior = _prior_summary(session, db)
+                grade_payload, payload = grade_and_next_question_combined(
+                    session.professor_domain,
+                    prior,
+                    next_question_index=next_index,
+                    background_information=q.background_information,
+                    essay_question=q.essay_question,
+                    grading_rubric=q.grading_rubric,
+                    student_response=q.student_response,
+                    seconds_on_question=sec,
+                    education_level=session.education_level,
+                    grading_strictness=session.grading_strictness,
+                    use_mock=session.use_mock_llm,
+                    exam_session_id=session.id,
+                )
+            except TogetherApiError:
+                db.rollback()
+                raise
+            q.graded_state_p_json = json.dumps(grade_payload, ensure_ascii=False)
+            db.add(q)
+            nq = ExamQuestion(
+                session_id=session.id,
+                question_index=next_index,
+                background_information=payload.get("background_information", ""),
+                essay_question=payload.get("essay_question", ""),
+                grading_rubric=_rubric_to_stored(payload.get("grading_rubric", [])),
+                domain_notes=payload.get("domain_notes"),
+            )
+            db.add(nq)
+            session.current_question_index = next_index
+            db.add(session)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
+            except OperationalError as exc:
+                db.rollback()
+                if _is_sqlite_locked_error(exc):
+                    return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
+                raise
             return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
 
         try:
@@ -1154,16 +1326,12 @@ def exam_answer(
             raise
 
         try:
-            prior = _prior_summary(session, db)
-            grade_payload, payload = grade_and_next_question_combined(
-                session.professor_domain,
-                prior,
-                next_question_index=next_index,
-                background_information=q.background_information,
-                essay_question=q.essay_question,
-                grading_rubric=q.grading_rubric,
-                student_response=q.student_response,
-                seconds_on_question=sec,
+            grade_payload = grade_answer(
+                q.background_information,
+                q.essay_question,
+                q.grading_rubric,
+                q.student_response,
+                sec,
                 education_level=session.education_level,
                 grading_strictness=session.grading_strictness,
                 use_mock=session.use_mock_llm,
@@ -1174,15 +1342,6 @@ def exam_answer(
             raise
         q.graded_state_p_json = json.dumps(grade_payload, ensure_ascii=False)
         db.add(q)
-        nq = ExamQuestion(
-            session_id=session.id,
-            question_index=next_index,
-            background_information=payload.get("background_information", ""),
-            essay_question=payload.get("essay_question", ""),
-            grading_rubric=_rubric_to_stored(payload.get("grading_rubric", [])),
-            domain_notes=payload.get("domain_notes"),
-        )
-        db.add(nq)
         session.current_question_index = next_index
         db.add(session)
         try:
@@ -1406,9 +1565,20 @@ def _safe_question_analysis_redirect(next_raw: str | None) -> str:
     if not next_raw:
         return default
     n = str(next_raw).strip()
-    if not n.startswith("/professor/question-analysis"):
-        return default
     if "://" in n or n.startswith("//"):
+        return default
+    u = urlparse(n)
+    if u.netloc:
+        return default
+    path = (u.path or "").rstrip("/") or "/"
+    allowed_paths = frozenset(
+        {
+            "/professor/question-analysis",
+            "/professor/question-analysis/nomination",
+            "/professor/question-analysis/manual-feedback",
+        }
+    )
+    if path not in allowed_paths:
         return default
     return n
 
@@ -1449,37 +1619,133 @@ def professor_question_analysis_feedback(
     return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
 
 
-@app.post("/professor/question-analysis/nominate")
-def professor_question_analysis_nominate(
+@app.post("/professor/question-analysis/create-nominated-exam")
+async def professor_create_nominated_exam(request: Request, db: Session = Depends(get_db)):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    form = await request.form()
+    title = str(form.get("title") or "").strip()[:512]
+    next_raw = str(form.get("next") or "/professor/question-analysis/nomination")
+    dest = _safe_question_analysis_redirect(next_raw)
+    raw_ids = form.getlist("question_id")
+    qids: list[int] = []
+    for x in raw_ids:
+        s = str(x).strip()
+        if s.isdigit():
+            qids.append(int(s))
+    qids = list(dict.fromkeys(qids))
+    if not qids:
+        return RedirectResponse(f"{dest}?nominated_error=no_questions", status_code=303)
+
+    rows = (
+        db.query(ExamQuestion, ExamSession)
+        .join(ExamSession, ExamQuestion.session_id == ExamSession.id)
+        .filter(ExamQuestion.id.in_(qids))
+        .all()
+    )
+    if len(rows) != len(qids):
+        return RedirectResponse(f"{dest}?nominated_error=invalid_questions", status_code=303)
+    session_ids = {s.id for (_, s) in rows}
+    if len(session_ids) != 1:
+        return RedirectResponse(f"{dest}?nominated_error=mixed_sessions", status_code=303)
+
+    pairs_sorted = sorted(rows, key=lambda p: (p[0].question_index, p[0].id))
+    _, source_sess = pairs_sorted[0]
+
+    fb_rows = (
+        db.query(QuestionAnalysisFeedback)
+        .filter(QuestionAnalysisFeedback.question_id.in_(qids))
+        .all()
+    )
+    fb_by_qid = {r.question_id: (r.instructor_note or "") for r in fb_rows}
+
+    access_code = generate_unique_nominated_access_code(db)
+    tpl = NominatedExam(
+        access_code=access_code,
+        title=title,
+        source_session_id=source_sess.id,
+        professor_domain=source_sess.professor_domain,
+        education_level=source_sess.education_level,
+        use_mock_llm=bool(source_sess.use_mock_llm),
+        grading_strictness=source_sess.grading_strictness,
+    )
+    db.add(tpl)
+    db.flush()
+
+    for new_index, (eq, _) in enumerate(pairs_sorted):
+        note = fb_by_qid.get(eq.id, "")
+        db.add(
+            NominatedExamSnapshotQuestion(
+                nominated_exam_id=tpl.id,
+                source_question_id=eq.id,
+                question_index=new_index,
+                background_information=eq.background_information or "",
+                essay_question=eq.essay_question or "",
+                grading_rubric=eq.grading_rubric or "",
+                domain_notes=eq.domain_notes,
+                instructor_note=note,
+            )
+        )
+    db.commit()
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(f"{dest}{sep}nominated_created={access_code}", status_code=303)
+
+
+@app.get("/professor/question-analysis/nomination", response_class=HTMLResponse)
+async def professor_question_analysis_nomination(
     request: Request,
     db: Session = Depends(get_db),
-    session_id: int = Form(),
-    nominate: str = Form("0"),
-    notes: str = Form(""),
-    next: str = Form("/professor/question-analysis"),
+    session_id_raw: str | None = Query(default=None, alias="session_id"),
+    education_level: str | None = Query(default=None),
+    llm_mode: str = Query(default="all"),
+    compare_by: str = Query(default="education_level"),
+    run: str = Query(default="1"),
+    sample_limit: int = Query(default=200, ge=1, le=2000),
+    nominated_created: str | None = Query(default=None),
+    nominated_error: str | None = Query(default=None),
 ):
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
-    sess = db.get(ExamSession, int(session_id))
-    if not sess:
-        return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
-    on = str(nominate).strip().lower() in ("1", "true", "yes", "on")
-    sid = int(session_id)
-    if on:
-        existing = db.get(NominatedExamSession, sid)
-        ntxt = (notes or "").strip()[:20000]
-        if existing:
-            existing.notes = ntxt
-            existing.created_at = datetime.now(timezone.utc)
-        else:
-            db.add(NominatedExamSession(session_id=sid, notes=ntxt))
-    else:
-        row = db.get(NominatedExamSession, sid)
-        if row:
-            db.delete(row)
-    db.commit()
-    return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
+    state = normalize_question_analysis_params(
+        session_id_raw=session_id_raw,
+        education_level=education_level,
+        llm_mode=llm_mode,
+        compare_by=compare_by,
+        run=run,
+        sample_limit=sample_limit,
+    )
+    ctx = await load_question_analysis_context(db, state=state)
+    ctx["nominated_created"] = (nominated_created or "").strip().upper()[:16]
+    ctx["nominated_error"] = (nominated_error or "").strip()
+    return templates.TemplateResponse(request, "question_analysis_nomination.html", ctx)
+
+
+@app.get("/professor/question-analysis/manual-feedback", response_class=HTMLResponse)
+async def professor_question_analysis_manual_feedback(
+    request: Request,
+    db: Session = Depends(get_db),
+    session_id_raw: str | None = Query(default=None, alias="session_id"),
+    education_level: str | None = Query(default=None),
+    llm_mode: str = Query(default="all"),
+    compare_by: str = Query(default="education_level"),
+    run: str = Query(default="1"),
+    sample_limit: int = Query(default=200, ge=1, le=2000),
+):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    state = normalize_question_analysis_params(
+        session_id_raw=session_id_raw,
+        education_level=education_level,
+        llm_mode=llm_mode,
+        compare_by=compare_by,
+        run=run,
+        sample_limit=sample_limit,
+    )
+    ctx = await load_question_analysis_context(db, state=state)
+    return templates.TemplateResponse(request, "question_analysis_manual_feedback.html", ctx)
 
 
 @app.get("/professor/question-analysis", response_class=HTMLResponse)
@@ -1496,170 +1762,16 @@ async def professor_question_analysis(
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
-    session_id: int | None = None
-    if session_id_raw and str(session_id_raw).strip().isdigit():
-        session_id = int(str(session_id_raw).strip())
-
-    lev = (education_level or "").strip()
-    if lev and lev not in ALLOWED_LEVEL_IDS:
-        lev = ""
-    lm = (llm_mode or "all").strip().lower()
-    if lm not in ("all", "mock", "production"):
-        lm = "all"
-    compare_key = (compare_by or "education_level").strip().lower()
-    compare_options = {
-        "education_level": "Education level",
-        "llm_mode": "LLM mode",
-        "session_id": "Session",
-        "quality_code": "Quality code (1–4)",
-        "grade_appropriateness_code": "Appropriateness code (1–4)",
-    }
-    if compare_key not in compare_options:
-        compare_key = "education_level"
-    should_run_analysis = (run or "").strip().lower() in ("1", "true", "yes", "on")
-
-    q = (
-        db.query(ExamQuestion, ExamSession)
-        .join(ExamSession, ExamQuestion.session_id == ExamSession.id)
+    state = normalize_question_analysis_params(
+        session_id_raw=session_id_raw,
+        education_level=education_level,
+        llm_mode=llm_mode,
+        compare_by=compare_by,
+        run=run,
+        sample_limit=sample_limit,
     )
-    if session_id is not None:
-        q = q.filter(ExamSession.id == int(session_id))
-    if lev:
-        q = q.filter(ExamSession.education_level == lev)
-    if lm == "mock":
-        q = q.filter(ExamSession.use_mock_llm.is_(True))
-    elif lm == "production":
-        q = q.filter(ExamSession.use_mock_llm.is_(False))
-
-    pairs = (
-        q.order_by(ExamSession.id.desc(), ExamQuestion.question_index.asc())
-        .limit(2500)
-        .all()
-    )
-    row_dicts = [
-        {
-            "session_id": session.id,
-            "exam_code": session.exam_code,
-            "question_id": eq.id,
-            "question_index": eq.question_index,
-            "education_level": session.education_level,
-            "use_mock_llm": session.use_mock_llm,
-            "essay_question": eq.essay_question,
-            "professor_domain": session.professor_domain,
-            "background_information": eq.background_information or "",
-        }
-        for (eq, session) in pairs
-    ]
-
-    error_message: str | None = None
-    analysis_rows = []
-    methodology_note = ""
-    chart_payload: dict | None = None
-    category_table = None
-    recent_sessions = (
-        db.query(ExamSession)
-        .order_by(ExamSession.created_at.desc())
-        .limit(80)
-        .all()
-    )
-    uses_remote_agent = bool((get_settings().analysis_agent_base_url or "").strip())
-    if should_run_analysis:
-        try:
-            lim = sample_limit if sample_limit else None
-            if uses_remote_agent and row_dicts:
-                analysis_rows, methodology_note = await analyze_questions_via_agent(
-                    row_dicts,
-                    sample_limit=lim,
-                    model_name=get_settings().question_analysis_st_model,
-                )
-            elif uses_remote_agent and not row_dicts:
-                analysis_rows = []
-                methodology_note = "No questions matched the filters."
-            else:
-
-                def _local_run():
-                    return analyze_questions_semantic(
-                        row_dicts,
-                        model_name=get_settings().question_analysis_st_model,
-                        sample_limit=lim,
-                    )
-
-                analysis_rows, methodology_note = await asyncio.to_thread(_local_run)
-            df = analysis_dataframe(analysis_rows)
-            category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
-            chart_payload = build_analysis_chart_payload(df, compare_by=compare_key)
-        except RuntimeError as e:
-            error_message = str(e)
-            methodology_note = ""
-            chart_payload = None
-    else:
-        methodology_note = (
-            "Set filters and click Run analysis to start scoring. "
-            "This screen now opens quickly without auto-running heavy analysis."
-        )
-
-    category_records: list[dict] = []
-    if category_table is not None and not category_table.empty:
-        category_records = category_table.to_dict("records")
-
-    feedback_by_question: dict[int, str] = {}
-    analysis_session_ids_ordered: list[int] = []
-    nominated_session_ids: set[int] = set()
-    if analysis_rows:
-        qids = [a.question_id for a in analysis_rows]
-        fb_rows = (
-            db.query(QuestionAnalysisFeedback)
-            .filter(QuestionAnalysisFeedback.question_id.in_(qids))
-            .all()
-        )
-        feedback_by_question = {r.question_id: (r.instructor_note or "") for r in fb_rows}
-        seen_s: set[int] = set()
-        for a in analysis_rows:
-            if a.session_id not in seen_s:
-                seen_s.add(a.session_id)
-                analysis_session_ids_ordered.append(a.session_id)
-        if seen_s:
-            nom_rows = (
-                db.query(NominatedExamSession)
-                .filter(NominatedExamSession.session_id.in_(seen_s))
-                .all()
-            )
-            nominated_session_ids = {r.session_id for r in nom_rows}
-
-    nomination_panel_sessions: list[ExamSession] = []
-    if analysis_session_ids_ordered:
-        order_map = {sid: i for i, sid in enumerate(analysis_session_ids_ordered)}
-        sp = db.query(ExamSession).filter(ExamSession.id.in_(analysis_session_ids_ordered)).all()
-        nomination_panel_sessions = sorted(sp, key=lambda s: order_map.get(s.id, 9999))
-
-    return templates.TemplateResponse(
-        request,
-        "question_analysis.html",
-        {
-            "education_levels": EDUCATION_LEVELS,
-            "sessions_picklist": recent_sessions,
-            "session_id": session_id,
-            "education_level": lev,
-            "llm_mode": lm,
-            "compare_by": compare_key,
-            "compare_options": compare_options,
-            "compare_by_help": ANALYSIS_COMPARE_BY_HELP,
-            "llm_filter_help": ANALYSIS_LLM_FILTER_HELP,
-            "sample_limit": sample_limit,
-            "run_analysis": should_run_analysis,
-            "analysis_rows": analysis_rows,
-            "methodology_note": methodology_note,
-            "chart_payload": chart_payload,
-            "category_records": category_records,
-            "compare_by_label": compare_options.get(compare_key, "Category"),
-            "error_message": error_message,
-            "feedback_by_question": feedback_by_question,
-            "nominated_session_ids": nominated_session_ids,
-            "analysis_session_ids_ordered": analysis_session_ids_ordered,
-            "uses_remote_agent": uses_remote_agent,
-            "nomination_panel_sessions": nomination_panel_sessions,
-        },
-    )
+    ctx = await load_question_analysis_context(db, state=state)
+    return templates.TemplateResponse(request, "question_analysis.html", ctx)
 
 
 @app.get("/professor/exam/{session_id}", response_class=HTMLResponse)

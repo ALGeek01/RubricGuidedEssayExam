@@ -22,6 +22,8 @@ A web app for **adaptive, oral-style exams**: students get essay questions tailo
 - **Question generation** from a free-text “professor domain” plus prior questions in the session
 - **Per-question grading** with rubric alignment and a **final aggregate grade** when the exam completes
 - **Professor views** listing recent sessions and per-session detail (prompts, responses, grades)
+- **Student entry:** the home page uses themed **Start exam** / **Resume exam** buttons. **Start exam** opens a choice between a **generated** exam (topic, level, rubric strictness) and an **instructor nominated exam** (fixed questions from analysis; student ID plus an **8-character** nominated exam ID from the instructor—the same idea as resume, but with the published nominated code).
+- **Nominated exams (instructors):** after **Question analysis**, open **Nominated exams** to select scored questions (manual feedback is copied into the student-facing notes), publish, and share the **8-character** exam ID. The analysis results view summarizes how many sessions in the current filter already have a nominated exam published.
 - **Mock LLM mode** for development without API keys (`MOCK_LLM=1`, defaulted by the start scripts when unset)
 - **Optional RGEE_Analysis_Agent** — separate FastAPI + Uvicorn service for instructor question-analysis embeddings (keeps heavy scoring out of the main exam process when `RGEE_ANALYSIS_AGENT_URL` is set)
 
@@ -54,9 +56,16 @@ The main app is **FastAPI** on **Uvicorn** and listens on **http://127.0.0.1:800
 | Page | URL |
 |------|-----|
 | Student / home | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) |
+| Start — choose generated vs nominated | [http://127.0.0.1:8000/start](http://127.0.0.1:8000/start) |
+| Generated exam (customize topic and level) | [http://127.0.0.1:8000/start/generated](http://127.0.0.1:8000/start/generated) |
+| Nominated exam (student ID + 8-character ID) | [http://127.0.0.1:8000/start/nominated](http://127.0.0.1:8000/start/nominated) |
+| Resume in-progress exam | [http://127.0.0.1:8000/resume](http://127.0.0.1:8000/resume) |
 | Professor dashboard | [http://127.0.0.1:8000/professor](http://127.0.0.1:8000/professor) |
 | Question analysis | [http://127.0.0.1:8000/professor/question-analysis](http://127.0.0.1:8000/professor/question-analysis) |
+| Nominated exams (publish from analysis) | [http://127.0.0.1:8000/professor/question-analysis/nomination](http://127.0.0.1:8000/professor/question-analysis/nomination) |
 | API docs (Swagger) | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
+
+**Resume vs nominated:** **Resume** uses your student ID and the **5-character** exam code for an attempt you already started. **Nominated exam** uses your student ID and the **8-character** code your instructor published from question analysis (fixed question set).
 
 ### macOS / Linux (recommended)
 

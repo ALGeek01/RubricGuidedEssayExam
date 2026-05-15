@@ -10,17 +10,10 @@
     </form>
   </div>
   <p class="hero-lead">
-    Each prompt is assigned <strong>two 4-point research codes</strong> (essay question quality; grade-level appropriateness)
-    by comparing Hugging Face sentence embeddings to fixed rubric tiers — the same structure as quantitative coding for
-    thematic analysis. Supplementary <strong>0–10</strong> relevance, quality, and humor signals are also shown for context.
+    Use the filters below, then <strong>Run analysis</strong> to score prompts with <strong>two 4-point research codes</strong>
+    (essay question quality; grade-level appropriateness) and supplementary <strong>0–10</strong> relevance, quality, and humor signals.
+    Charts and per-question rationale appear under <strong>Semantic analysis results</strong>. Use the <strong>Nominated exams</strong> and <strong>Manual feedback</strong> buttons in that block (after you run) to open those tasks on separate pages.
   </p>
-  <aside class="callout callout-tip" role="note">
-    <strong>Tools used:</strong> FastAPI + SQLAlchemy for retrieval, sentence-transformers (Hugging Face, PyTorch backend)
-    for semantic coding, pandas for grouped summaries, and <strong>Chart.js</strong> for interactive dashboard widgets.
-    {% if uses_remote_agent %}
-    <strong>Scoring process:</strong> embeddings run in the separate <strong>RGEE_Analysis_Agent</strong> service so the main exam server does not load the PyTorch stack for this page.
-    {% endif %}
-  </aside>
 </section>
 
 <form class="panel form-card analysis-filters" method="get" action="/professor/question-analysis" id="analysis-filter-form">
@@ -156,46 +149,27 @@
 {% if methodology_note %}
 <aside class="callout callout-tip" role="note">
   <strong>Method:</strong> {{ methodology_note }}
+  {% if uses_remote_agent %}
+  <span class="muted small-print"> · Scoring is delegated to the <strong>RGEE_Analysis_Agent</strong> service (PyTorch not loaded in the main exam server for this job).</span>
+  {% endif %}
 </aside>
 {% endif %}
 
-{% if run_analysis and nomination_panel_sessions %}
-<div class="panel analysis-nomination-panel">
-  <h2 class="panel-title">Nominate sessions (tracking only)</h2>
-  <p class="muted small-print">
-    Mark exams you want to prioritize for quality review and model-improvement discussions.
-    <strong>Student exam generation is unchanged</strong> — randomness and question flow are not tied to this list.
+{% if run_analysis %}
+<section class="analysis-core" id="semantic-analysis-results" aria-labelledby="analysis-core-heading">
+  <h2 id="analysis-core-heading" class="analysis-section-heading">Semantic analysis results</h2>
+  <p class="muted small-print analysis-section-lead">
+    Everything in this section is <strong>embedding-based scoring only</strong>: charts (Chart.js), category summaries (pandas), and expandable cards with AI-derived codes and rationale.
   </p>
-  <ul class="analysis-nomination-list">
-    {% for s in nomination_panel_sessions %}
-    <li class="analysis-nomination-item">
-      <span class="analysis-nomination-meta">
-        <a href="/professor/exam/{{ s.id }}">Session #{{ s.id }}</a>
-        <span class="mono-tight muted">{{ s.exam_code or "—" }}</span>
-        <span class="muted">{{ s.student.external_student_id }}</span>
-      </span>
-      {% if s.id in nominated_session_ids %}
-      <form method="post" action="/professor/question-analysis/nominate" class="analysis-nominate-form">
-        <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-        <input type="hidden" name="session_id" value="{{ s.id }}">
-        <input type="hidden" name="nominate" value="0">
-        <button type="submit" class="btn btn-secondary btn-sm">Remove nomination</button>
-      </form>
-      {% else %}
-      <form method="post" action="/professor/question-analysis/nominate" class="analysis-nominate-form">
-        <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-        <input type="hidden" name="session_id" value="{{ s.id }}">
-        <input type="hidden" name="nominate" value="1">
-        <button type="submit" class="btn btn-primary btn-sm">Nominate for tracking</button>
-      </form>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
+  <nav class="analysis-subpage-links" aria-label="Instructor follow-up pages">
+    <a class="btn btn-primary analysis-subpage-link-btn" href="{{ url_nomination }}">Nominated exams</a>
+    <a class="btn btn-primary analysis-subpage-link-btn" href="{{ url_manual_feedback }}">Manual feedback</a>
+  </nav>
+  {% if nominated_sessions_summary %}
+  <p class="muted small-print analysis-nominated-summary" id="analysis-nominated-summary">{{ nominated_sessions_summary }}</p>
+  {% endif %}
 
-{% if run_analysis and chart_payload is not none and not chart_payload.get('empty') %}
+{% if chart_payload is not none and not chart_payload.get('empty') %}
 <script type="application/json" id="analysis-chart-payload">{{ chart_payload | tojson }}</script>
 <div class="analysis-dashboard" id="analysis-dashboard">
   <header class="analysis-dashboard-header">
@@ -258,13 +232,12 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script src="/static/question_analysis_charts.js" defer></script>
-{% elif run_analysis and chart_payload is not none and chart_payload.get('empty') %}
+{% elif chart_payload is not none and chart_payload.get('empty') %}
 <aside class="callout callout-tip" role="status">
   <strong>No chart data:</strong> this filter returned no questions to score. Adjust filters or generate exams, then run again.
 </aside>
 {% endif %}
 
-{% if run_analysis %}
 {% if category_records %}
 <div class="panel panel-table">
   <h2 class="panel-title">Category summary</h2>
@@ -381,27 +354,6 @@
             <p class="muted essay-excerpt">{{ a.essay_question }}</p>
           </div>
         </div>
-        <div class="analysis-instructor-feedback">
-          <p class="analysis-widget-title analysis-detail-section-title">Your feedback (optional)</p>
-          <p class="muted small-print">Stored with this question on the main RGEE server; shown beside the AI-derived scores above.</p>
-          <form method="post" action="/professor/question-analysis/feedback" class="analysis-feedback-form">
-            <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-            <input type="hidden" name="session_id" value="{{ a.session_id }}">
-            <input type="hidden" name="question_id" value="{{ a.question_id }}">
-            <label class="a11y-sr-only" for="instructor-note-{{ a.question_id }}">Instructor note for question {{ a.question_index + 1 }}</label>
-            <textarea
-              class="field-input analysis-feedback-textarea"
-              name="instructor_note"
-              id="instructor-note-{{ a.question_id }}"
-              rows="3"
-              maxlength="20000"
-              placeholder="e.g. tighten scope, add context, or flag ambiguity…"
-            >{{ feedback_by_question.get(a.question_id, '') }}</textarea>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-secondary btn-sm">Save instructor note</button>
-            </div>
-          </form>
-        </div>
       </div>
     </details>
     {% else %}
@@ -411,6 +363,8 @@
     {% endfor %}
   </div>
 </div>
+
+</section>
 {% endif %}
 <script>
 (function () {
