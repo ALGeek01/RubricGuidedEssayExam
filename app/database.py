@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     event,
     inspect,
@@ -101,6 +102,49 @@ class FinalGrade(Base):
     summary_json: Mapped[str] = mapped_column(Text)  # full LLM payload
 
     session: Mapped["ExamSession"] = relationship(back_populates="final_grade_row")
+
+
+class QuestionAnalysisFeedback(Base):
+    """Instructor free-text notes per analyzed question (main RGEE DB; shown beside AI scores)."""
+
+    __tablename__ = "question_analysis_feedback"
+    __table_args__ = (
+        UniqueConstraint("session_id", "question_id", name="uq_question_analysis_feedback_session_question"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    question_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("exam_questions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    instructor_note: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class NominatedExamSession(Base):
+    """Sessions flagged for quality-improvement tracking (metadata only; does not alter exam generation)."""
+
+    __tablename__ = "nominated_exam_sessions"
+
+    session_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class PerformanceLog(Base):

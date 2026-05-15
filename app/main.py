@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 import re
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -16,6 +18,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.analysis_agent_client import analyze_questions_via_agent
 from app.config import get_settings
 from app.instructor_auth import (
     SESSION_KEY,
@@ -28,7 +31,9 @@ from app.database import (
     ExamQuestion,
     ExamSession,
     FinalGrade,
+    NominatedExamSession,
     PerformanceLog,
+    QuestionAnalysisFeedback,
     Student,
     generate_unique_exam_code,
     get_db,
@@ -1396,8 +1401,89 @@ def professor_developer_tools(request: Request):
     return templates.TemplateResponse(request, "professor_tools.html", {})
 
 
+def _safe_question_analysis_redirect(next_raw: str | None) -> str:
+    default = "/professor/question-analysis"
+    if not next_raw:
+        return default
+    n = str(next_raw).strip()
+    if not n.startswith("/professor/question-analysis"):
+        return default
+    if "://" in n or n.startswith("//"):
+        return default
+    return n
+
+
+@app.post("/professor/question-analysis/feedback")
+def professor_question_analysis_feedback(
+    request: Request,
+    db: Session = Depends(get_db),
+    session_id: int = Form(),
+    question_id: int = Form(),
+    instructor_note: str = Form(""),
+    next: str = Form("/professor/question-analysis"),
+):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    note = (instructor_note or "").strip()[:20000]
+    row = (
+        db.query(QuestionAnalysisFeedback)
+        .filter(
+            QuestionAnalysisFeedback.session_id == int(session_id),
+            QuestionAnalysisFeedback.question_id == int(question_id),
+        )
+        .one_or_none()
+    )
+    if row:
+        row.instructor_note = note
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(
+            QuestionAnalysisFeedback(
+                session_id=int(session_id),
+                question_id=int(question_id),
+                instructor_note=note,
+            )
+        )
+    db.commit()
+    return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
+
+
+@app.post("/professor/question-analysis/nominate")
+def professor_question_analysis_nominate(
+    request: Request,
+    db: Session = Depends(get_db),
+    session_id: int = Form(),
+    nominate: str = Form("0"),
+    notes: str = Form(""),
+    next: str = Form("/professor/question-analysis"),
+):
+    redir = _instructor_login_redirect(request)
+    if redir:
+        return redir
+    sess = db.get(ExamSession, int(session_id))
+    if not sess:
+        return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
+    on = str(nominate).strip().lower() in ("1", "true", "yes", "on")
+    sid = int(session_id)
+    if on:
+        existing = db.get(NominatedExamSession, sid)
+        ntxt = (notes or "").strip()[:20000]
+        if existing:
+            existing.notes = ntxt
+            existing.created_at = datetime.now(timezone.utc)
+        else:
+            db.add(NominatedExamSession(session_id=sid, notes=ntxt))
+    else:
+        row = db.get(NominatedExamSession, sid)
+        if row:
+            db.delete(row)
+    db.commit()
+    return RedirectResponse(_safe_question_analysis_redirect(next), status_code=303)
+
+
 @app.get("/professor/question-analysis", response_class=HTMLResponse)
-def professor_question_analysis(
+async def professor_question_analysis(
     request: Request,
     db: Session = Depends(get_db),
     session_id_raw: str | None = Query(default=None, alias="session_id"),
@@ -1476,13 +1562,29 @@ def professor_question_analysis(
         .limit(80)
         .all()
     )
+    uses_remote_agent = bool((get_settings().analysis_agent_base_url or "").strip())
     if should_run_analysis:
         try:
-            analysis_rows, methodology_note = analyze_questions_semantic(
-                row_dicts,
-                model_name=get_settings().question_analysis_st_model,
-                sample_limit=sample_limit if sample_limit else None,
-            )
+            lim = sample_limit if sample_limit else None
+            if uses_remote_agent and row_dicts:
+                analysis_rows, methodology_note = await analyze_questions_via_agent(
+                    row_dicts,
+                    sample_limit=lim,
+                    model_name=get_settings().question_analysis_st_model,
+                )
+            elif uses_remote_agent and not row_dicts:
+                analysis_rows = []
+                methodology_note = "No questions matched the filters."
+            else:
+
+                def _local_run():
+                    return analyze_questions_semantic(
+                        row_dicts,
+                        model_name=get_settings().question_analysis_st_model,
+                        sample_limit=lim,
+                    )
+
+                analysis_rows, methodology_note = await asyncio.to_thread(_local_run)
             df = analysis_dataframe(analysis_rows)
             category_table = summarize_by_category(df, compare_by=compare_key) if not df.empty else None
             chart_payload = build_analysis_chart_payload(df, compare_by=compare_key)
@@ -1499,6 +1601,36 @@ def professor_question_analysis(
     category_records: list[dict] = []
     if category_table is not None and not category_table.empty:
         category_records = category_table.to_dict("records")
+
+    feedback_by_question: dict[int, str] = {}
+    analysis_session_ids_ordered: list[int] = []
+    nominated_session_ids: set[int] = set()
+    if analysis_rows:
+        qids = [a.question_id for a in analysis_rows]
+        fb_rows = (
+            db.query(QuestionAnalysisFeedback)
+            .filter(QuestionAnalysisFeedback.question_id.in_(qids))
+            .all()
+        )
+        feedback_by_question = {r.question_id: (r.instructor_note or "") for r in fb_rows}
+        seen_s: set[int] = set()
+        for a in analysis_rows:
+            if a.session_id not in seen_s:
+                seen_s.add(a.session_id)
+                analysis_session_ids_ordered.append(a.session_id)
+        if seen_s:
+            nom_rows = (
+                db.query(NominatedExamSession)
+                .filter(NominatedExamSession.session_id.in_(seen_s))
+                .all()
+            )
+            nominated_session_ids = {r.session_id for r in nom_rows}
+
+    nomination_panel_sessions: list[ExamSession] = []
+    if analysis_session_ids_ordered:
+        order_map = {sid: i for i, sid in enumerate(analysis_session_ids_ordered)}
+        sp = db.query(ExamSession).filter(ExamSession.id.in_(analysis_session_ids_ordered)).all()
+        nomination_panel_sessions = sorted(sp, key=lambda s: order_map.get(s.id, 9999))
 
     return templates.TemplateResponse(
         request,
@@ -1521,6 +1653,11 @@ def professor_question_analysis(
             "category_records": category_records,
             "compare_by_label": compare_options.get(compare_key, "Category"),
             "error_message": error_message,
+            "feedback_by_question": feedback_by_question,
+            "nominated_session_ids": nominated_session_ids,
+            "analysis_session_ids_ordered": analysis_session_ids_ordered,
+            "uses_remote_agent": uses_remote_agent,
+            "nomination_panel_sessions": nomination_panel_sessions,
         },
     )
 

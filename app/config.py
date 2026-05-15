@@ -61,6 +61,12 @@ class Settings(BaseSettings):
         alias="QUESTION_ANALYSIS_ST_MODEL",
     )
 
+    # Optional parallel RGEE_Analysis_Agent (http://127.0.0.1:8010). When set, question analysis
+    # scoring is delegated over HTTP so PyTorch does not block the main Uvicorn worker.
+    analysis_agent_base_url: str = Field(default="", alias="RGEE_ANALYSIS_AGENT_URL")
+    analysis_agent_api_secret: str = Field(default="", alias="RGEE_ANALYSIS_AGENT_SECRET")
+    analysis_agent_timeout_seconds: float = Field(default=600.0, alias="RGEE_ANALYSIS_AGENT_TIMEOUT_S")
+
 
 @lru_cache
 def get_settings() -> Settings:

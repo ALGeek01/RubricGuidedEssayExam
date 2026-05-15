@@ -22,12 +22,14 @@ A web app for **adaptive, oral-style exams**: students get essay questions tailo
 - **Question generation** from a free-text “professor domain” plus prior questions in the session
 - **Per-question grading** with rubric alignment and a **final aggregate grade** when the exam completes
 - **Professor views** listing recent sessions and per-session detail (prompts, responses, grades)
-- **Mock LLM mode** for development without API keys (`MOCK_LLM=1`, default in `run_dev.sh`)
+- **Mock LLM mode** for development without API keys (`MOCK_LLM=1`, defaulted by the start scripts when unset)
+- **Optional RGEE_Analysis_Agent** — separate FastAPI + Uvicorn service for instructor question-analysis embeddings (keeps heavy scoring out of the main exam process when `RGEE_ANALYSIS_AGENT_URL` is set)
 
 ## Stack
 
-- Python 3.x · **FastAPI** · **Jinja2** · **SQLAlchemy** (SQLite by default)
+- Python 3.11+ · **FastAPI** · **Uvicorn** · **Jinja2** · **SQLAlchemy** (SQLite by default)
 - **Together AI** chat completions when not in mock mode (`TOGETHER_API_KEY`, model configurable)
+- **Optional RGEE_Analysis_Agent** — second FastAPI + Uvicorn app for semantic question scoring over HTTP (`RGEE_ANALYSIS_AGENT_URL`)
 
 ## Prerequisites
 
@@ -47,161 +49,135 @@ This removes `.venv`, recreates it with 3.12 (or the next-best 3.11/3.13 on your
 
 ## How to run the app
 
-The server listens on **http://127.0.0.1:8000** by default.
+The main app is **FastAPI** on **Uvicorn** and listens on **http://127.0.0.1:8000** by default (override with `PORT=8080 ./scripts/launch_project.sh`).
 
 | Page | URL |
 |------|-----|
 | Student / home | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) |
 | Professor dashboard | [http://127.0.0.1:8000/professor](http://127.0.0.1:8000/professor) |
+| Question analysis | [http://127.0.0.1:8000/professor/question-analysis](http://127.0.0.1:8000/professor/question-analysis) |
 | API docs (Swagger) | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
 
-### macOS
+### macOS / Linux (recommended)
 
-1. Open **Terminal** and go to the project folder (replace the path with where you cloned the repo):
+1. Open a terminal and go to the project root (where this `README.md` lives).
 
-   ```bash
-   cd /path/to/RubricGuidedEssayExam
-   ```
-
-2. Create a virtual environment and activate it:
+2. **One-command startup** (creates `.venv` if needed, installs or refreshes deps when `requirements.txt` changes, creates `.env` from `.env.example` if missing, then starts Uvicorn with reload):
 
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
+   chmod +x scripts/launch_project.sh run_dev.sh scripts/launch_analysis_agent.sh
+   ./scripts/launch_project.sh
    ```
 
-3. Install dependencies:
+   - Sets **`MOCK_LLM=1`** by default when unset (safe local demos).  
+   - If **`RGEE_ANALYSIS_AGENT_URL`** is set in `.env`, instructor question analysis calls that URL instead of running embeddings inside this process.
+
+3. **Faster re-runs** after `.venv` already exists:
 
    ```bash
-   pip install -r requirements.txt
+   ./run_dev.sh
    ```
 
-4. Configure environment variables (optional but recommended):
+   Same Uvicorn reload layout; exits with a hint if `.venv` is missing (run `launch_project.sh` once).
+
+4. **Environment file:** copy and edit if you have not already:
 
    ```bash
    cp .env.example .env
    ```
 
-   Edit `.env` in a text editor:
+   - **`MOCK_LLM=1`** — mock questions and grades (no API key).  
+   - **`MOCK_LLM=0`** and **`TOGETHER_API_KEY`** — [Together.ai](https://api.together.xyz/) for live LLM calls.  
+   - **`RGEE_ANALYSIS_AGENT_URL`** (optional) — e.g. `http://127.0.0.1:8010` when the analysis agent is running (see below).  
+   - Instructor login: see comments in `.env.example` (`INSTRUCTOR_SESSION_SECRET`, credentials file path).
 
-   - **`MOCK_LLM=1`** — uses built-in mock questions and grades (no API key; best for local demos and development).  
-   - **`MOCK_LLM=0`** and a valid **`TOGETHER_API_KEY`** — uses the [Together.ai](https://api.together.xyz/) API for real LLM calls.
+5. Press **Ctrl+C** to stop the server.
 
-5. Start the development server (pick one):
+### Optional: RGEE_Analysis_Agent (parallel analysis service)
 
-   **Option A — helper script** (sets `MOCK_LLM` to `1` by default if unset, then runs Uvicorn with reload limited to app/template/static/assets):
+Same stack (**FastAPI + Uvicorn**), separate process on **port 8010**, own SQLite DB under `RGEE_Analysis_Agent/`. Use it so instructor **Question analysis** does not load PyTorch in the main exam server.
 
-   ```bash
-   chmod +x run_dev.sh
-   ./run_dev.sh
-   ```
-
-   **Option B — auto-launch script** (creates `.venv`, installs deps once, and starts Uvicorn with reload limited to app/template/static/assets):
+1. Second terminal:
 
    ```bash
-   chmod +x scripts/launch_project.sh
-   ./scripts/launch_project.sh
+   ./scripts/launch_analysis_agent.sh
    ```
 
-   If you also want to enable the virtual environment in your current shell session:
+2. In `.env` for the main app:
 
    ```bash
-   source .venv/bin/activate
+   RGEE_ANALYSIS_AGENT_URL=http://127.0.0.1:8010
    ```
 
-   **Option C — manual** (activate `.venv` first, then):
+   Optional shared secret: **`RGEE_ANALYSIS_AGENT_SECRET`** in both apps (see `.env.example`).
 
-   ```bash
-   export MOCK_LLM=1
-   uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
-   ```
+3. For **live** embeddings (not mock), install a Python with PyTorch wheels and set `RGEE_MOCK_QUESTION_ANALYSIS=0` on the agent; see `requirements-analysis.txt` / `scripts/recreate_venv.sh` on the main app for the analogous stack.
 
-6. Leave Terminal open while you use the app. Press **Ctrl+C** to stop the server.
+### Docker (main + agent)
+
+From the repo root:
+
+```bash
+docker compose up --build
+```
+
+- Main app: **http://localhost:8000**  
+- Agent health: **http://localhost:8010/health**  
+
+Configure instructor auth via environment or a mounted credentials file as you would locally.
+
+### Manual Uvicorn (after `source .venv/bin/activate`)
+
+```bash
+export MOCK_LLM=1
+uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
+```
 
 ### Windows
 
-1. Open **Command Prompt** or **PowerShell** and go to the project folder:
+Use **Git Bash** (from Git for Windows) to run the same `./scripts/launch_project.sh` and `./run_dev.sh` as on macOS/Linux, **or** use the manual steps below in Command Prompt / PowerShell.
 
-   ```bat
-   cd C:\path\to\RubricGuidedEssayExam
-   ```
+1. Go to the project folder, e.g. `cd C:\path\to\RGEE`.
 
-2. Create a virtual environment:
+2. Create and activate a virtual environment (`py -3 -m venv .venv` or `python -m venv .venv`, then activate — see previous README patterns).
 
-   ```bat
-   py -3 -m venv .venv
-   ```
+3. Install dependencies: `pip install -r requirements.txt`
 
-   If `py` is not available, try `python -m venv .venv` instead.
+4. Copy `.env`: `copy .env.example .env` (CMD) or `Copy-Item .env.example .env` (PowerShell). Edit **`MOCK_LLM`**, **`TOGETHER_API_KEY`**, and optional **`RGEE_ANALYSIS_AGENT_URL`**.
 
-3. **Activate** the virtual environment:
-
-   - **Command Prompt:**
-
-     ```bat
-     .venv\Scripts\activate.bat
-     ```
-
-   - **PowerShell:**
-
-     ```powershell
-     .venv\Scripts\Activate.ps1
-     ```
-
-     If PowerShell blocks scripts, run once as Administrator:  
-     `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-
-4. Install dependencies:
-
-   ```bat
-   pip install -r requirements.txt
-   ```
-
-5. Create your `.env` file from the example:
-
-   - **Command Prompt:**
-
-     ```bat
-     copy .env.example .env
-     ```
-
-   - **PowerShell:**
-
-     ```powershell
-     Copy-Item .env.example .env
-     ```
-
-   Edit `.env` with Notepad or your editor: set **`MOCK_LLM=1`** for mock mode, or **`MOCK_LLM=0`** and **`TOGETHER_API_KEY=...`** for live Together.ai calls.
-
-6. Start the server (with the virtual environment **still activated**):
+5. With `.venv` activated, start the app (include the same `--reload-dir` flags as Unix for a consistent dev experience):
 
    **Command Prompt:**
 
    ```bat
    set MOCK_LLM=1
-   python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   python -m uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
    ```
 
    **PowerShell:**
 
    ```powershell
    $env:MOCK_LLM = "1"
-   python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   python -m uvicorn app.main:app --reload --reload-dir app --reload-dir templates --reload-dir static --reload-dir assets --host 127.0.0.1 --port 8000
    ```
 
-   (`run_dev.sh` is for Unix shells; on Windows use the commands above.)
+6. Press **Ctrl+C** to stop the server.
 
-7. Press **Ctrl+C** in the terminal to stop the server.
+### Run automated tests
 
-### Run automated tests (optional)
+From the **repository root**, with dependencies installed (the start scripts install `pytest` from `requirements.txt`):
 
-With the virtual environment activated and dependencies installed (including `pytest` from `requirements.txt`):
+```bash
+.venv/bin/python -m pytest tests/ -v
+```
+
+Or after `source .venv/bin/activate`:
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-Mock LLM and an isolated test database are configured automatically for tests.
+Tests use **mock LLM** and an **isolated temporary SQLite database** (`tests/conftest.py`); they do not require Together.ai keys or a running analysis agent unless a test explicitly sets `RGEE_ANALYSIS_AGENT_URL` with a mock HTTP client.
 
 ## License
 

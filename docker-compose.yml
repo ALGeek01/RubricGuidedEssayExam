@@ -1,0 +1,41 @@
+# Start main RGEE + RGEE_Analysis_Agent together. Main app calls the agent for instructor question analysis.
+#
+#   docker compose up --build
+#
+# Then open http://localhost:8000/ (set instructor credentials via env or mount instructor_credentials.json).
+services:
+  rgee-analysis-agent:
+    build:
+      context: .
+      dockerfile: RGEE_Analysis_Agent/Dockerfile
+    ports:
+      - "8010:8010"
+    environment:
+      RGEE_MOCK_QUESTION_ANALYSIS: "1"
+      RGEE_ANALYSIS_AGENT_DATABASE_URL: sqlite:////data/rgee_analysis_agent.db
+    volumes:
+      - rgee-agent-data:/data
+
+  rgee-main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MOCK_LLM: "1"
+      RGEE_ANALYSIS_AGENT_URL: http://rgee-analysis-agent:8010
+      # Optional: must match RGEE_ANALYSIS_AGENT_SECRET on the agent if you set it
+      # RGEE_ANALYSIS_AGENT_SECRET: "change-me"
+    depends_on:
+      - rgee-analysis-agent
+    volumes:
+      - rgee-main-data:/data
+    # Persist SQLite under /data (override default sqlite path)
+    command: >
+      sh -c "export DATABASE_URL=sqlite:////data/exam_system.db &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  rgee-main-data:
+  rgee-agent-data:
