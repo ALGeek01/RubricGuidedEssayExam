@@ -7,6 +7,11 @@
   "use strict";
 
   var STORAGE_KEY = "rgee_a11y_prefs_v1";
+  var SESSION_KEY = "rgee_a11y_prefs_v1_session";
+
+  function prefsAllowed() {
+    return typeof window !== "undefined" && window.RGEE && window.RGEE.consent && window.RGEE.consent.preferencesAllowed();
+  }
 
   function defaultState() {
     return {
@@ -22,7 +27,7 @@
 
   function loadState() {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
+      var raw = prefsAllowed() ? localStorage.getItem(STORAGE_KEY) : sessionStorage.getItem(SESSION_KEY);
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       if (typeof parsed !== "object" || parsed === null) return null;
@@ -34,7 +39,13 @@
 
   function saveState(state) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      var raw = JSON.stringify(state);
+      if (prefsAllowed()) {
+        localStorage.setItem(STORAGE_KEY, raw);
+        sessionStorage.removeItem(SESSION_KEY);
+      } else {
+        sessionStorage.setItem(SESSION_KEY, raw);
+      }
     } catch (e) {
       /* private mode etc. */
     }

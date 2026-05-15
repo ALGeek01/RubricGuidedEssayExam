@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+    (function () {
+      try {
+        function consentLevel() {
+          var m = document.cookie.match(/(?:^|; )rgee_consent=([^;]*)/);
+          return m ? decodeURIComponent(m[1]) : "";
+        }
+        var c = consentLevel();
+        if (c === "full") {
+          if (localStorage.getItem("rgee_theme_v1") === "light") {
+            document.documentElement.setAttribute("data-theme", "light");
+          }
+        } else if (sessionStorage.getItem("rgee_theme_session") === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      } catch (e) {}
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}RGEE{% endblock %} · Rubric-Guided Essay Exam</title>
@@ -19,13 +37,34 @@
         <a href="/" class="logo">RGEE</a>
         <span class="tagline">Rubric-guided essay exams</span>
       </div>
-      <nav class="main-nav" aria-label="Main">
-        <a href="/" class="nav-link{% if request.url.path == '/' %} is-active{% endif %}">Home</a>
-        <a href="/professor" class="nav-link{% if request.url.path.startswith('/professor') and not request.url.path.startswith('/professor/tools') and not request.url.path.startswith('/professor/question-analysis') %} is-active{% endif %}">Instructor</a>
-        {% if instructor_signed_in(request) %}
-        <a href="/professor/tools" class="nav-link{% if request.url.path.startswith('/professor/tools') or request.url.path.startswith('/professor/question-analysis') or request.url.path.startswith('/performance-log') %} is-active{% endif %}">Developer tools</a>
-        {% endif %}
-      </nav>
+      <div class="site-header-trailing">
+        <nav class="main-nav" aria-label="Main">
+          <a href="/" class="nav-link{% if request.url.path == '/' %} is-active{% endif %}">Home</a>
+          <a href="/professor" class="nav-link{% if request.url.path.startswith('/professor') and not request.url.path.startswith('/professor/tools') and not request.url.path.startswith('/professor/question-analysis') %} is-active{% endif %}">Instructor</a>
+          {% if instructor_signed_in(request) %}
+          <a href="/professor/tools" class="nav-link{% if request.url.path.startswith('/professor/tools') or request.url.path.startswith('/professor/question-analysis') or request.url.path.startswith('/performance-log') %} is-active{% endif %}">Developer tools</a>
+          {% endif %}
+        </nav>
+        <button
+          type="button"
+          class="theme-toggle"
+          id="theme-toggle"
+          aria-label="Switch to light mode"
+          title="Theme: use light or dark appearance"
+        >
+          <span class="theme-toggle-icon theme-toggle-icon--sun" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="theme-toggle-icon theme-toggle-icon--moon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+      </div>
     </header>
 
     <main id="main" class="main">
@@ -34,7 +73,92 @@
 
     <footer class="site-footer">
       <p>Modular oral-style exam system · Mock LLM supported for local demos</p>
+      <p class="site-footer-meta">
+        <button type="button" class="footer-text-btn" id="footer-cookie-choices">Cookie choices</button>
+        <span class="site-footer-sep" aria-hidden="true">·</span>
+        <span class="site-footer-hint">Onboarding &amp; theme use preference cookies when enabled.</span>
+      </p>
     </footer>
+  </div>
+
+  <div
+    id="cookie-consent-bar"
+    class="cookie-consent-bar"
+    role="region"
+    aria-label="Cookie and privacy choices"
+    hidden
+  >
+    <div class="cookie-consent-inner">
+      <div class="cookie-consent-text">
+        <p class="cookie-consent-title">Cookies and saved settings</p>
+        <p class="cookie-consent-lead">
+          We use a small browser cookie to record your choice. If you allow <strong>preference</strong> storage, we also keep theme, accessibility options, and “tour completed” in this browser so they persist between visits. You can opt out and use <strong>essential only</strong> (no cross-visit preference storage).
+        </p>
+      </div>
+      <div class="cookie-consent-actions">
+        <button type="button" class="btn btn-primary" id="cookie-accept-all">Accept all</button>
+        <button type="button" class="btn btn-secondary" id="cookie-essential-only">Essential only (opt out)</button>
+      </div>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    id="cookie-settings-backdrop"
+    class="cookie-settings-backdrop"
+    hidden
+    aria-hidden="true"
+    tabindex="-1"
+  ></button>
+  <div
+    id="cookie-settings-dialog"
+    class="cookie-settings-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="cookie-settings-title"
+    hidden
+  >
+    <div class="cookie-settings-header">
+      <h2 id="cookie-settings-title" class="cookie-settings-title">Cookie choices</h2>
+      <button type="button" class="cookie-settings-close" id="cookie-settings-close" aria-label="Close">×</button>
+    </div>
+    <p class="cookie-settings-lead">
+      Change whether preference data (theme, accessibility, onboarding) is stored across visits. Essential cookies are limited to remembering this decision.
+    </p>
+    <fieldset class="cookie-settings-fieldset">
+      <legend class="cookie-settings-legend">Storage</legend>
+      <label class="cookie-settings-option">
+        <input type="radio" name="cookie-level" value="full" />
+        <span>Allow preference storage — remember theme, accessibility, and onboarding between visits.</span>
+      </label>
+      <label class="cookie-settings-option">
+        <input type="radio" name="cookie-level" value="essential" />
+        <span>Essential only — opt out of cross-visit preference storage (session-only behavior for those features).</span>
+      </label>
+    </fieldset>
+    <div class="cookie-settings-actions">
+      <button type="button" class="btn btn-primary" id="cookie-settings-save">Save choice</button>
+      <button type="button" class="btn btn-secondary" id="cookie-onboarding-replay">Replay welcome tour</button>
+    </div>
+  </div>
+
+  <div id="onboarding-overlay" class="onboarding-overlay" hidden aria-hidden="true"></div>
+  <div
+    id="onboarding-dialog"
+    class="onboarding-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="onboarding-title"
+    hidden
+  >
+    <p class="onboarding-kicker" id="onboarding-step-label">Step 1 of 5</p>
+    <h2 id="onboarding-title" class="onboarding-title">Welcome</h2>
+    <div id="onboarding-body" class="onboarding-body"></div>
+    <div class="onboarding-actions">
+      <button type="button" class="btn btn-secondary" id="onboarding-back">Back</button>
+      <button type="button" class="btn btn-primary" id="onboarding-next">Next</button>
+      <button type="button" class="btn btn-secondary onboarding-skip" id="onboarding-skip">Skip tour</button>
+    </div>
   </div>
 
   <div id="a11y-reading-mask" class="a11y-reading-mask" hidden aria-hidden="true">
@@ -65,7 +189,7 @@
         <button type="button" class="a11y-close" id="a11y-close" aria-label="Close accessibility options">×</button>
       </div>
       <p class="a11y-hint">
-        Preferences are saved in this browser only (WCAG-aligned helpers: reading bar, contrast, text, links).
+        Preferences are saved in this browser when you allow preference cookies; otherwise they apply for this tab session only (WCAG-aligned helpers: reading bar, contrast, text, links).
       </p>
 
       <div class="a11y-section">
@@ -130,6 +254,9 @@
     </button>
   </div>
 
+  <script src="/static/consent.js" defer></script>
+  <script src="/static/theme.js" defer></script>
   <script src="/static/accessibility.js" defer></script>
+  <script src="/static/cookies-onboarding.js" defer></script>
 </body>
 </html>
