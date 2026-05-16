@@ -49,6 +49,7 @@
   <ul class="analysis-nomination-list">
     {% for s in nomination_panel_sessions %}
     <li class="analysis-nomination-item">
+      {% set nom_codes = nominated_access_codes_by_session.get(s.id, []) %}
       <span class="analysis-nomination-meta">
         <a href="/professor/exam/{{ s.id }}">Session #{{ s.id }}</a>
         <span class="mono-tight muted">{{ s.exam_code or "—" }}</span>
@@ -56,6 +57,12 @@
       </span>
       {% if s.id in sessions_published_nominated_exam %}
       <span class="badge badge-nominated-published">Nominated exam published</span>
+      {% if nom_codes %}
+      <span class="muted small-print analysis-nomination-ids">
+        Student exam ID{% if nom_codes|length != 1 %}s{% endif %}:
+        {% for code in nom_codes %}<span class="mono-tight">{{ code }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+      </span>
+      {% endif %}
       {% else %}
       <span class="badge badge-nominated-unpublished">No nominated exam yet</span>
       {% endif %}
@@ -78,7 +85,7 @@
     <a href="{{ url_manual_feedback }}">Manual feedback</a> is copied into the student-facing notes for each question.
     All selections must belong to the <strong>same</strong> exam session.
   </p>
-  <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+  <input type="hidden" name="next" value="{{ url_nomination }}">
   <div class="field field-span-2">
     <label for="nominated_title">Optional title (for your records)</label>
     <input type="text" id="nominated_title" name="title" maxlength="512" placeholder="e.g. Midterm practice set A">

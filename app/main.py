@@ -1746,6 +1746,7 @@ async def professor_create_nominated_exam(request: Request, db: Session = Depend
             )
         )
     db.commit()
+    request.session["rgee_nominated_created_flash"] = access_code.upper()
     sep = "&" if "?" in dest else "?"
     return RedirectResponse(f"{dest}{sep}nominated_created={access_code}", status_code=303)
 
@@ -1775,7 +1776,12 @@ async def professor_question_analysis_nomination(
         sample_limit=sample_limit,
     )
     ctx = await load_question_analysis_context(db, state=state)
-    ctx["nominated_created"] = (nominated_created or "").strip().upper()[:16]
+    qc = ((nominated_created or "").strip().upper()[:8])
+    fq = qc if _is_valid_nominated_access_code(qc) else ""
+    fraw = request.session.pop("rgee_nominated_created_flash", None)
+    ff = (str(fraw).strip().upper()[:8]) if fraw is not None else ""
+    ff_ok = ff if _is_valid_nominated_access_code(ff) else ""
+    ctx["nominated_created"] = fq or ff_ok
     ctx["nominated_error"] = (nominated_error or "").strip()
     return templates.TemplateResponse(request, "question_analysis_nomination.html", ctx)
 

@@ -179,6 +179,7 @@ async def load_question_analysis_context(
     feedback_by_question: dict[int, str] = {}
     analysis_session_ids_ordered: list[int] = []
     sessions_published_nominated_exam: set[int] = set()
+    nominated_access_codes_by_session: dict[int, list[str]] = {}
     if analysis_rows:
         qids = [a.question_id for a in analysis_rows]
         fb_rows = (
@@ -200,6 +201,18 @@ async def load_question_analysis_context(
                 .all()
             )
             sessions_published_nominated_exam = {int(r[0]) for r in pub_rows if r[0] is not None}
+
+            nom_rows = (
+                db.query(NominatedExam.source_session_id, NominatedExam.access_code)
+                .filter(NominatedExam.source_session_id.in_(seen_s))
+                .order_by(NominatedExam.created_at.desc())
+                .all()
+            )
+            for sid, code in nom_rows:
+                if sid is None or not code:
+                    continue
+                k = int(sid)
+                nominated_access_codes_by_session.setdefault(k, []).append(str(code).strip().upper())
 
     nomination_panel_sessions: list[ExamSession] = []
     if analysis_session_ids_ordered:
@@ -239,6 +252,7 @@ async def load_question_analysis_context(
         "error_message": error_message,
         "feedback_by_question": feedback_by_question,
         "sessions_published_nominated_exam": sessions_published_nominated_exam,
+        "nominated_access_codes_by_session": nominated_access_codes_by_session,
         "analysis_session_ids_ordered": analysis_session_ids_ordered,
         "uses_remote_agent": uses_remote_agent,
         "nomination_panel_sessions": nomination_panel_sessions,

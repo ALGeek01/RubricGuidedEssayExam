@@ -1830,6 +1830,22 @@ button.btn-primary {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Match status chips: avoid full capsules in tight cells (can read visually as circles). */
+.data-table td .pill {
+  border-radius: 8px;
+  max-width: 14rem;
+  white-space: normal;
+  line-height: 1.35;
+  justify-content: flex-start;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table td .pill-sm {
+  font-size: 0.74rem;
+  padding: 0.26rem 0.55rem;
+}
+
 .data-table .center {
   text-align: center;
   padding: 2rem 1rem;
