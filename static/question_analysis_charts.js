@@ -1,20 +1,44 @@
 /**
  * Exam question analysis dashboard — Chart.js widgets (RGEE theme colors).
+ * Palette follows document CSS variables so light / high-contrast themes stay readable.
  */
 (function () {
   "use strict";
 
-  var C = {
-    accent: "#38bdf8",
-    accent2: "#818cf8",
-    mint: "#34d399",
-    rose: "#f472b6",
-    amber: "#fbbf24",
-    text: "#e2e8f0",
-    muted: "#94a3b8",
-    grid: "rgba(148, 163, 184, 0.14)",
-    surface: "rgba(24, 34, 54, 0.5)",
-  };
+  function buildChartPalette() {
+    var root = document.documentElement;
+    var cs = getComputedStyle(root);
+    var light = root.getAttribute("data-theme") === "light";
+    var pick = function (name, fallback) {
+      var v = (cs.getPropertyValue(name) || "").trim();
+      return v || fallback;
+    };
+    var text = pick("--text", "#e2e8f0");
+    var muted = pick("--muted", "#94a3b8");
+    var accent = pick("--accent", "#38bdf8");
+    var accent2 = pick("--accent-2", "#818cf8");
+    var grid = light
+      ? "rgba(15, 23, 42, 0.14)"
+      : "rgba(148, 163, 184, 0.22)";
+    var donutBorder = light
+      ? "rgba(15, 23, 42, 0.22)"
+      : "rgba(15, 23, 42, 0.85)";
+    return {
+      accent: accent,
+      accent2: accent2,
+      mint: "#34d399",
+      rose: "#f472b6",
+      amber: "#fbbf24",
+      text: text,
+      muted: muted,
+      grid: grid,
+      surface: light ? "rgba(255, 255, 255, 0)" : "rgba(24, 34, 54, 0.5)",
+      donutBorder: donutBorder,
+      isLight: light,
+    };
+  }
+
+  var C = buildChartPalette();
 
   var payloadEl = document.getElementById("analysis-chart-payload");
   if (!payloadEl) return;
@@ -43,13 +67,29 @@
     return { top: 8, right: 10, bottom: 10, left: 8 };
   }
 
+  function titleFont() {
+    return {
+      family: "Outfit, system-ui, sans-serif",
+      size: 14,
+      weight: "700",
+    };
+  }
+
+  function tickFont() {
+    return {
+      family: "Outfit, system-ui, sans-serif",
+      size: 12,
+      weight: "600",
+    };
+  }
+
   function legendOpts() {
     return {
       labels: {
-        color: C.muted,
-        font: { family: "Outfit, system-ui, sans-serif", size: 11 },
-        boxWidth: 10,
-        padding: 10,
+        color: C.text,
+        font: { family: "Outfit, system-ui, sans-serif", size: 12, weight: "600" },
+        boxWidth: 12,
+        padding: 12,
       },
     };
   }
@@ -103,7 +143,7 @@
           {
             data: qf,
             backgroundColor: [C.accent, C.accent2, C.mint, C.rose],
-            borderColor: "rgba(15, 23, 42, 0.85)",
+            borderColor: C.donutBorder,
             borderWidth: 2,
             hoverOffset: 6,
           },
@@ -120,7 +160,7 @@
             display: true,
             text: "Essay quality codes (1–4)",
             color: C.text,
-            font: { family: "Outfit, system-ui", size: 13, weight: "600" },
+            font: titleFont(),
           },
         },
       },
@@ -139,7 +179,7 @@
           {
             data: gf,
             backgroundColor: [C.mint, C.accent, C.amber, C.accent2],
-            borderColor: "rgba(15, 23, 42, 0.85)",
+            borderColor: C.donutBorder,
             borderWidth: 2,
             hoverOffset: 6,
           },
@@ -156,7 +196,7 @@
             display: true,
             text: "Grade fit codes (1–4)",
             color: C.text,
-            font: { family: "Outfit, system-ui", size: 13, weight: "600" },
+            font: titleFont(),
           },
         },
       },
@@ -191,12 +231,18 @@
             min: 0,
             max: 10,
             grid: { color: C.grid },
-            ticks: { color: C.muted, font: { size: 11 } },
+            ticks: {
+              color: C.muted,
+              font: tickFont(),
+            },
             border: { color: C.grid },
           },
           y: {
             grid: { display: false },
-            ticks: { color: C.text, font: { size: 11 } },
+            ticks: {
+              color: C.text,
+              font: tickFont(),
+            },
             border: { display: false },
           },
         },
@@ -206,7 +252,7 @@
             display: true,
             text: "Supplementary embedding means",
             color: C.text,
-            font: { family: "Outfit, system-ui", size: 13, weight: "600" },
+            font: titleFont(),
           },
         },
       },
@@ -267,11 +313,12 @@
           x: {
             grid: { display: false },
             ticks: {
-              color: C.muted,
+              color: C.text,
               maxRotation: 45,
               minRotation: 0,
               autoSkip: true,
               maxTicksLimit: 14,
+              font: tickFont(),
             },
             border: { color: C.grid },
           },
@@ -279,7 +326,7 @@
             min: 0,
             suggestedMax: 4.5,
             grid: { color: C.grid },
-            ticks: { color: C.muted },
+            ticks: { color: C.muted, font: tickFont() },
             border: { color: C.grid },
           },
         },
@@ -289,7 +336,7 @@
             display: true,
             text: "Means by comparison category",
             color: C.text,
-            font: { family: "Outfit, system-ui", size: 13, weight: "600" },
+            font: titleFont(),
           },
         },
       },
@@ -310,7 +357,9 @@
             label: "Quality code",
             data: se.quality_code,
             borderColor: C.accent,
-            backgroundColor: "rgba(56, 189, 248, 0.12)",
+            backgroundColor: C.isLight
+              ? "rgba(3, 105, 161, 0.12)"
+              : "rgba(56, 189, 248, 0.12)",
             tension: 0.25,
             fill: false,
             pointRadius: 4,
@@ -344,7 +393,7 @@
         scales: {
           x: {
             grid: { color: C.grid },
-            ticks: { color: C.muted },
+            ticks: { color: C.text, font: tickFont() },
             border: { color: C.grid },
           },
           y: {
@@ -352,9 +401,14 @@
             position: "left",
             min: 0,
             max: 4.5,
-            title: { display: true, text: "Codes / scaled", color: C.muted, font: { size: 10 } },
+            title: {
+              display: true,
+              text: "Codes / scaled",
+              color: C.text,
+              font: tickFont(),
+            },
             grid: { color: C.grid },
-            ticks: { color: C.muted },
+            ticks: { color: C.muted, font: tickFont() },
             border: { color: C.grid },
           },
           y1: {
@@ -363,9 +417,14 @@
             min: 0,
             max: 10,
             grid: { drawOnChartArea: false },
-            ticks: { color: C.muted },
+            ticks: { color: C.muted, font: tickFont() },
             border: { display: false },
-            title: { display: true, text: "Relevance", color: C.muted, font: { size: 10 } },
+            title: {
+              display: true,
+              text: "Relevance",
+              color: C.text,
+              font: tickFont(),
+            },
           },
         },
         plugins: {
@@ -374,7 +433,7 @@
             display: true,
             text: "Single session — per question",
             color: C.text,
-            font: { family: "Outfit, system-ui", size: 13, weight: "600" },
+            font: titleFont(),
           },
         },
       },

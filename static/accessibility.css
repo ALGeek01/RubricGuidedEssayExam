@@ -84,6 +84,324 @@ html.a11y-high-contrast .btn-secondary {
   border: 2px solid #fff !important;
 }
 
+/*
+ * Light UI + High contrast: the global HC block above forces white text (--text).
+ * style.css (loaded first) then applies pastel light surfaces keyed off [data-theme="light"];
+ * resolving var(--text) gives white-on-ice → illegible.
+ * Keep a strictly light canvas while maximizing contrast on controls and overlays.
+ */
+html[data-theme="light"].a11y-high-contrast {
+  --bg-deep: #ffffff;
+  --bg-mid: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --border: #000000;
+  --text: #000000;
+  --muted: #1a1a1a;
+  --accent: #0000aa;
+  --accent-2: #000088;
+  --accent-glow: rgba(0, 0, 0, 0.18);
+  --success: #004422;
+  --warn: #553000;
+  --shadow: none;
+}
+
+html[data-theme="light"].a11y-high-contrast .page-bg {
+  background: #ffffff !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .logo {
+  background: none !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .nav-link {
+  color: #000000 !important;
+  border-color: transparent !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .nav-link:hover,
+html[data-theme="light"].a11y-high-contrast .nav-link.is-active {
+  color: #000000 !important;
+  background: #e5e5e5 !important;
+  border-color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .theme-toggle {
+  background: #ffffff !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .theme-toggle:hover {
+  background: #e5e5e5 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .btn-secondary {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 3px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .panel,
+html[data-theme="light"].a11y-high-contrast .analysis-detail-panel,
+html[data-theme="light"].a11y-high-contrast .analysis-detail-card,
+html[data-theme="light"].a11y-high-contrast .analysis-widget,
+html[data-theme="light"].a11y-high-contrast .form-card {
+  border: 3px solid #000000 !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .muted,
+html[data-theme="light"].a11y-high-contrast .hero-lead,
+html[data-theme="light"].a11y-high-contrast .hint {
+  color: #1a1a1a !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .callout,
+html[data-theme="light"].a11y-high-contrast .cookie-consent-bar,
+html[data-theme="light"].a11y-high-contrast .cookie-settings-dialog {
+  background: #ffffff !important;
+  border: 3px solid #000000 !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .callout code {
+  background: #f0f0f0 !important;
+  color: #000000 !important;
+  border: 1px solid #000000;
+}
+
+html[data-theme="light"].a11y-high-contrast input[type="text"],
+html[data-theme="light"].a11y-high-contrast input[type="number"],
+html[data-theme="light"].a11y-high-contrast input[type="password"],
+html[data-theme="light"].a11y-high-contrast textarea,
+html[data-theme="light"].a11y-high-contrast select {
+  background: #ffffff !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .resume-id-banner {
+  background: #fffbea !important;
+  border: 3px solid #000000 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .resume-id-banner-kicker,
+html[data-theme="light"].a11y-high-contrast .resume-id-banner-lead,
+html[data-theme="light"].a11y-high-contrast .resume-id-banner-body,
+html[data-theme="light"].a11y-high-contrast .resume-id-banner-lead strong {
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .pill-student {
+  background: #e8e8e8 !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .pill-level {
+  background: #e8eaff !important;
+  color: #000066 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .pill-llm {
+  background: #dff5ea !important;
+  color: #003320 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .pill-strictness {
+  background: #fff4d9 !important;
+  color: #442200 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .mode-pill {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .mode-pill:hover:not(:disabled),
+html[data-theme="light"].a11y-high-contrast .mode-pill.is-active {
+  background: #000088 !important;
+  color: #ffffff !important;
+  border: 3px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .data-table th,
+html[data-theme="light"].a11y-high-contrast .data-table td {
+  border-color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .data-table th {
+  background: #e8e8e8 !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .data-table tbody tr:hover td {
+  background: #eaeaea !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .latest-hint-card {
+  border: 3px solid #000000 !important;
+  background: #f7fbff !important;
+  box-shadow: none !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .latest-hint-card strong {
+  color: #000000 !important;
+  text-decoration: underline;
+}
+
+html[data-theme="light"].a11y-high-contrast .hint-dot,
+html[data-theme="light"].a11y-high-contrast .hint-dot.is-active {
+  border-width: 2px !important;
+  border-style: solid !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .hint-nav-btn {
+  border: 2px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .onboarding-overlay {
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .onboarding-dialog {
+  border: 3px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .onboarding-body,
+html[data-theme="light"].a11y-high-contrast .onboarding-body strong,
+html[data-theme="light"].a11y-high-contrast .onboarding-title,
+html[data-theme="light"].a11y-high-contrast .onboarding-kicker {
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .loading-overlay {
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .loading-card {
+  border: 3px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .cookie-settings-backdrop {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .badge,
+html[data-theme="light"].a11y-high-contrast .badge-nominated-unpublished {
+  border: 1px solid #000000 !important;
+  color: #000000 !important;
+  background: #ededed !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .badge-nominated-published {
+  background: #c8ffd4 !important;
+  color: #002210 !important;
+  border: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast a:not(.btn) {
+  color: #000080 !important;
+  text-decoration: underline !important;
+}
+
+/* Anchor-as-button: exclude from link rule above (otherwise #000080 wins over HC white-on-blue). */
+html[data-theme="light"].a11y-high-contrast a.btn.btn-primary {
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+html[data-theme="light"].a11y-high-contrast a.btn.btn-secondary {
+  color: #000000 !important;
+  text-decoration: none !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .exam-code-value {
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-box-strength {
+  background: #e8fce8 !important;
+  border: 2px solid #000000 !important;
+  color: #001a0d !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-label-strength {
+  color: #001a0d !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-box-improve {
+  background: #fff8dc !important;
+  border: 2px solid #000000 !important;
+  color: #331a00 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-label-improve {
+  color: #331a00 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-box-suggest {
+  background: #ffe4e4 !important;
+  border: 2px solid #000000 !important;
+  color: #4a0000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-label-suggest {
+  color: #4a0000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-box-summary {
+  background: #e6f3ff !important;
+  border: 2px solid #000000 !important;
+  color: #000d1a !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .rubric-label-summary {
+  color: #000d1a !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .analysis-note-block {
+  background: #f2f2f2 !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .analysis-note-label {
+  color: #000080 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .analysis-nomination-item {
+  border-bottom: 2px solid #000000 !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .analysis-filter-reference {
+  border: 2px solid #000000 !important;
+  background: #ffffff !important;
+}
+
+html[data-theme="light"].a11y-high-contrast .site-header {
+  border-bottom: 3px solid #000000 !important;
+}
+
 /* 1.4.4 Resize text — scales rem root */
 html.a11y-text-110 {
   font-size: 110%;
