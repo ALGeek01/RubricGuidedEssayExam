@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Question {{ question_number }}{% endblock %}
+{% block extra_head %}
+{% include 'includes/katex_head.html' %}
+{% endblock %}
 {% block body %}
 <section class="exam-code-banner" aria-label="Exam ID">
   <p class="exam-code-label">Exam ID</p>
@@ -20,6 +23,7 @@
   </div>
 </div>
 
+<div class="rgee-render-math">
 <section class="panel">
   <h2 class="panel-title">Background</h2>
   <div class="prose explain">{{ question.background_information }}</div>
@@ -41,6 +45,7 @@
     {% endif %}
   </div>
 </section>
+</div>
 
 <section class="panel hint-panel is-collapsed" id="hint-panel">
   <div class="hint-panel-header">
@@ -110,6 +115,14 @@
   <div class="field">
     <label for="answer">Essay response <span class="req">*</span></label>
     <textarea id="answer" name="answer" required rows="12" placeholder="Write your response here."></textarea>
+    <p class="muted small-print answer-math-preview-lead">
+      The box is plain text. The preview below renders math: use <code>\( … \)</code> / <code>\[ … \]</code> or Markdown-style inline <code>$ … $</code> and display <code>$$ … $$</code>.
+      Heading markers (<code>#</code>, <code>##</code>) stay as text; only formulas are prettified there.
+    </p>
+    <div class="answer-math-preview-shell" aria-labelledby="answer-math-preview-heading" hidden id="answer-math-preview-shell">
+      <p id="answer-math-preview-heading" class="label-over answer-math-preview-heading">Equation preview</p>
+      <div id="answer-math-preview" class="prose explain answer-math-preview" tabindex="-1"></div>
+    </div>
   </div>
   <div class="form-actions">
     {% if question_number < total_planned %}
@@ -196,6 +209,9 @@
   var hintPanelBody = document.getElementById('hint-panel-body');
   var hintCollapseBtn = document.getElementById('hint-collapse-btn');
   var hintCollapseIcon = document.getElementById('hint-collapse-icon');
+  var answerMathPreviewShell = document.getElementById('answer-math-preview-shell');
+  var answerMathPreview = document.getElementById('answer-math-preview');
+  var answerPreviewDebounceTimer = null;
   if (!answer || !hidden || !hintForm || !hintButton) return;
   var defaultAnswerSubmitText = answerSubmitBtn ? answerSubmitBtn.textContent : 'Submit';
   var questionSubmitLocked = false;
@@ -337,6 +353,27 @@
     return trimmed.split(/\s+/).length;
   }
 
+  function typesetMathEl(el) {
+    if (!el || typeof window.rgeeTypesetMathRoot !== 'function') return;
+    window.rgeeTypesetMathRoot(el);
+  }
+
+  function updateAnswerEquationPreview() {
+    if (!answer || !answerMathPreview || !answerMathPreviewShell) return;
+    clearTimeout(answerPreviewDebounceTimer);
+    answerPreviewDebounceTimer = setTimeout(function () {
+      var raw = (answer.value || '').trim();
+      if (!raw) {
+        answerMathPreviewShell.hidden = true;
+        answerMathPreview.textContent = '';
+        return;
+      }
+      answerMathPreviewShell.hidden = false;
+      answerMathPreview.textContent = answer.value || '';
+      typesetMathEl(answerMathPreview);
+    }, 120);
+  }
+
   function updateHintWordCount() {
     if (!hintQuery || !hintHelp) return true;
     var count = wordCount(hintQuery.value);
@@ -349,6 +386,12 @@
   if (hintQuery) {
     hintQuery.addEventListener('input', updateHintWordCount);
     updateHintWordCount();
+  }
+
+  if (answer) {
+    answer.addEventListener('input', updateAnswerEquationPreview);
+    answer.addEventListener('change', updateAnswerEquationPreview);
+    updateAnswerEquationPreview();
   }
 
   function renderHintCarousel() {
@@ -367,6 +410,7 @@
     if (activeHintIndex < 0 || activeHintIndex >= total) activeHintIndex = total - 1;
     hintPos.textContent = String(activeHintIndex + 1);
     latestHintText.textContent = hintHistory[activeHintIndex];
+    typesetMathEl(latestHintText);
     var dots = '';
     for (var i = 0; i < total; i++) {
       dots += '<button type="button" class="hint-dot' + (i === activeHintIndex ? ' is-active' : '') + '" data-hint-index="' + i + '" aria-label="Go to hint ' + (i + 1) + '"></button>';
@@ -402,6 +446,7 @@
     if (activeAiIndex < 0 || activeAiIndex >= total) activeAiIndex = total - 1;
     aiPos.textContent = String(activeAiIndex + 1);
     latestAiText.textContent = aiHistory[activeAiIndex];
+    typesetMathEl(latestAiText);
     var dots = '';
     for (var i = 0; i < total; i++) {
       dots += '<button type="button" class="hint-dot' + (i === activeAiIndex ? ' is-active' : '') + '" data-ai-index="' + i + '" aria-label="Go to AI reply ' + (i + 1) + '"></button>';
@@ -546,6 +591,7 @@
         }
         if (latestAiText && data.hint) {
           latestAiText.textContent = data.hint;
+          typesetMathEl(latestAiText);
           setHelperView('ai');
         }
       } else {

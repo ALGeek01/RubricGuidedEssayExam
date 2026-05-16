@@ -1906,6 +1906,38 @@ button.btn-primary {
   hyphens: auto;
 }
 
+/* KaTeX: allow wide display equations to scroll within panels */
+.rgee-render-math .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.hint-carousel-body .katex-display,
+.answer-math-preview .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.answer-math-preview-shell {
+  margin-top: 0.55rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.answer-math-preview-heading {
+  margin: 0 0 0.5rem;
+}
+
+.answer-math-preview {
+  margin: 0;
+}
+
+.answer-math-preview-lead {
+  margin-top: 0.35rem;
+}
+
 .rubric-block {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -2343,6 +2375,10 @@ button.btn-primary {
   display: block;
 }
 
+.hint-carousel-body #latest-ai-text {
+  display: block;
+}
+
 .hint-nav-btn {
   width: 2.35rem;
   height: 2.35rem;
@@ -2436,29 +2472,48 @@ button.btn-primary {
 .ai-helper-tag {
   display: inline-block;
   margin-left: 0.35rem;
-  padding: 0.12rem 0.5rem;
+  padding: 0.14rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(129, 140, 248, 0.14));
-  color: #bfe9ff;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--text);
   font-size: 0.88em;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 
+html[data-theme="light"] .ai-helper-tag {
+  border-color: rgba(3, 105, 161, 0.4);
+  background: rgba(3, 105, 161, 0.12);
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
 .hint-collapse-btn {
   padding: 0.45rem 0.65rem;
   min-width: 2.25rem;
-  border-color: rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+html[data-theme="light"] .hint-collapse-btn {
+  border-color: rgba(3, 105, 161, 0.35);
+  background: rgba(3, 105, 161, 0.08);
+}
+
+html[data-theme="light"] .hint-collapse-btn:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.2);
 }
 
 .hint-chevron {
   display: inline-block;
   width: 0.58rem;
   height: 0.58rem;
-  border-right: 2px solid #bfe9ff;
-  border-bottom: 2px solid #bfe9ff;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
   transform: rotate(45deg);
   transition: transform 0.18s ease;
   margin-top: -2px;

@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Results{% endblock %}
+{% block extra_head %}
+{% include 'includes/katex_head.html' %}
+{% endblock %}
 {% block body %}
 <section class="exam-code-banner" aria-label="Exam ID">
   <p class="exam-code-label">Exam ID</p>
@@ -15,6 +18,7 @@
   </p>
 </section>
 
+<div class="rgee-render-math">
 {% if final_grade %}
 <section class="panel panel-success">
   <h2 class="panel-title">Overall grade</h2>
@@ -77,6 +81,7 @@
   {% endif %}
 </section>
 {% endfor %}
+</div>
 
 <p class="next-action">
   <a href="/" class="btn btn-secondary">Start another exam</a>

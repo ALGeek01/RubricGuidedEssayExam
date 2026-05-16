@@ -3,15 +3,17 @@
 Resolution order used for live Together calls:
 1. OS credential store (keyring — Keychain Services on macOS, etc.)
 2. Encrypted blob under the per-user credential directory (AES via Fernet)
-3. Environment / .env (TOGETHER_API_KEY) — least preferred for workstations
+3. Plain ``TOGETHER_API_KEY`` from the process environment, then optionally from ``.env`` on disk —
+   useful for Docker, CI, or hosts where keyring is awkward or unavailable (least preferred on workstations).
 
-Override credential directory with RGEE_CREDENTIAL_DATA_DIR for containers or tests.
+Override credential directory with ``RGEE_CREDENTIAL_DATA_DIR`` for containers or tests.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import stat
 import sys
 from pathlib import Path
@@ -24,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 KEYRING_SERVICE = "com.rgee.RubricGuidedEssayExam"
 KEYRING_USERNAME = "TOGETHER_API_KEY"
+_TOGETHER_KEY_DOTENV_LINE = re.compile(
+    r"^[ \t]*(?:export[ \t]+)?TOGETHER_API_KEY[ \t]*=.*$"
+)
 _TOGETHER_CIPHERTEXT = "together_api_key.enc"
 _FERNET_KEY_FILE = ".rgee_machine_fernet"
 
@@ -240,29 +245,106 @@ def store_together_api_key(secret_plain: str) -> tuple[str, str]:
     )
 
 
+def _dotenv_candidate_paths() -> list[Path]:
+    """``.env`` locations we may rewrite (same file listed once if cwd matches project root).
+
+    Mirrors typical ``pydantic-settings`` lookups: beside the checkout and under the server cwd.
+    """
+    project_root = Path(__file__).resolve().parent.parent
+    uniq: dict[str, Path] = {}
+    for raw in (project_root / ".env", Path.cwd() / ".env"):
+        try:
+            key = os.path.abspath(os.path.realpath(str(raw.expanduser())))
+        except OSError:
+            key = os.path.abspath(str(raw.expanduser()))
+        uniq.setdefault(key, raw.expanduser())
+    return list(uniq.values())
+
+
+def _strip_together_api_key_from_dotenv_path(path: Path) -> bool:
+    """Remove assigning lines for ``TOGETHER_API_KEY``. Returns True if ``path`` changed."""
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        logger.warning("Could not read %s to clear TOGETHER_API_KEY: %s", path, e)
+        return False
+
+    kept: list[str] = []
+    stripped = False
+    for ln in text.splitlines(keepends=True):
+        core = ln.rstrip("\r\n")
+        if _TOGETHER_KEY_DOTENV_LINE.match(core):
+            stripped = True
+            continue
+        kept.append(ln)
+    new_text = "".join(kept)
+    if not stripped or new_text == text:
+        return False
+    try:
+        path.write_text(new_text, encoding="utf-8")
+        _chmod_owner_rw(path)
+    except OSError as e:
+        logger.warning("Could not rewrite %s to remove TOGETHER_API_KEY: %s", path, e)
+        return False
+    return True
+
+
 def clear_vault_credentials() -> str:
-    """Remove keychain and encrypted-file copies. Does not edit .env."""
+    """Remove keychain, encrypted file, and ``TOGETHER_API_KEY=`` assignments from scanned ``.env`` files."""
     had_keychain = bool((_read_keyring() or "").strip())
     had_file = (credential_data_directory() / _TOGETHER_CIPHERTEXT).exists()
 
+    dot_changed: list[str] = []
+    for p in _dotenv_candidate_paths():
+        if _strip_together_api_key_from_dotenv_path(p):
+            dot_changed.append(str(p))
+
     _delete_keyring()
     _delete_encrypted_file()
+    get_settings.cache_clear()
 
-    if not had_keychain and not had_file:
-        return "No vault-stored Together key was found (nothing removed from secure storage)."
+    env_set_now = bool(str(get_settings().together_api_key or "").strip())
+    shell_export = bool((os.environ.get("TOGETHER_API_KEY") or "").strip())
 
-    parts = []
+    removed_vault_items = []
     if had_keychain:
-        parts.append("OS keychain")
+        removed_vault_items.append("OS keychain")
     if had_file:
-        parts.append("encrypted disk file")
-    env_set = bool(str(get_settings().together_api_key or "").strip())
-    tail = ""
-    if env_set:
-        tail = " Together calls can still read TOGETHER_API_KEY from environment / .env until you unset it."
+        removed_vault_items.append("encrypted disk file")
+
+    if not removed_vault_items and not dot_changed:
+        return (
+            "Nothing was removed — vault copies were already empty and no TOGETHER_API_KEY= line "
+            "was found in the scanned .env files."
+        )
+
+    chunks: list[str] = []
+
+    if removed_vault_items:
+        chunks.append(f"Secure storage cleared ({', '.join(removed_vault_items)})")
+    elif dot_changed and not removed_vault_items:
+        chunks.append("Vault storage was already empty")
+
+    if dot_changed:
+        locs = "; ".join(dot_changed)
+        chunks.append(f"removed TOGETHER_API_KEY entries from local .env file(s): {locs}")
+
+    head = "; ".join(chunks) + "."
+
+    if env_set_now:
+        if shell_export:
+            tail = (
+                " Together still resolves TOGETHER_API_KEY from the process environment (export,"
+                " container inject, systemd, etc.). Remove or rotate that injection to revoke it everywhere."
+            )
+        else:
+            tail = (
+                " A Together key still resolves from environment sources outside the rewritten .env files."
+            )
     else:
         tail = (
-            " Production exams will fall back on Mock unless you paste a key again "
-            "or configure TOGETHER_API_KEY."
+            " Production exams will fall back on Mock unless you paste a key again or set TOGETHER_API_KEY."
         )
-    return f"Removed secure storage ({', '.join(parts)}).{tail}"
+    return f"{head}{tail}"
