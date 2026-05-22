@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Local runtime logs from scripts/start_project.sh
+.rgee-run/
+
 # If RGEE_CREDENTIAL_DATA_DIR points inside this repo, ignore ciphertext + Fernet key material from together_credentials.py.
 .rgee-credentials/
 **/together_api_key.enc

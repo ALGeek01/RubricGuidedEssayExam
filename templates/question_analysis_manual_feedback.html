@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Manual feedback · Question analysis{% endblock %}
 {% block wrap_modifier %} wrap--analysis{% endblock %}
+{% block extra_head %}
+{% include 'includes/katex_head.html' %}
+{% endblock %}
 {% block body %}
 <section class="hero hero-compact">
   <div class="hero-row">
@@ -30,21 +33,28 @@
 <div class="panel analysis-extra-panel analysis-manual-feedback-panel" id="manual-feedback">
   <h2 class="panel-title">Your notes per question</h2>
   <p class="muted small-print">
-    Notes are stored on this server and are independent of the embedding scores on the <a href="{{ url_analysis_scored }}">semantic analysis</a> page.
+    Notes and <strong>manual ranks</strong> are stored on this server. Use the signal bars (1–4, same scale as AI) beside each save control;
+    <strong>AI Qly / Lvl</strong> pills show embedding scores from <a href="{{ url_analysis_scored }}">semantic analysis</a>.
+    Click the same bar again to clear; double-click any bar also clears. Drag across bars to set quickly.
   </p>
   <div class="analysis-feedback-list">
     {% for a in analysis_rows %}
+    {% set mr = manual_rank_by_question.get(a.question_id, {}) %}
+    {% set man_q = mr.get('quality') %}
+    {% set man_g = mr.get('grade') %}
     <div class="analysis-feedback-row">
       <div class="analysis-feedback-row-head">
         <span class="analysis-feedback-row-meta">
           <a href="/professor/exam/{{ a.session_id }}">#{{ a.session_id }}</a>
           {% if a.exam_code %}<span class="mono-tight muted">{{ a.exam_code }}</span>{% endif %}
           <span class="analysis-detail-q-label">Q{{ a.question_index + 1 }}</span>
-          <span class="pill pill-sm">Qly {{ a.quality_code }}/4</span>
-          <span class="pill pill-sm">Lvl {{ a.grade_appropriateness_code }}/4</span>
+          <span class="pill pill-sm pill-rank-ai" title="AI essay quality code">AI Qly {{ a.quality_code }}/4</span>
+          <span class="pill pill-sm pill-rank-ai" title="AI grade appropriateness code">AI Lvl {{ a.grade_appropriateness_code }}/4</span>
+          <span class="pill pill-sm pill-rank-manual" id="pill-man-q-{{ a.question_id }}" title="Your quality rank">You Qly {% if man_q %}{{ man_q }}/4{% else %}—{% endif %}</span>
+          <span class="pill pill-sm pill-rank-manual" id="pill-man-g-{{ a.question_id }}" title="Your appropriateness rank">You Lvl {% if man_g %}{{ man_g }}/4{% else %}—{% endif %}</span>
         </span>
       </div>
-      <p class="muted small-print analysis-feedback-preview">{{ a.essay_question[:180] }}{% if a.essay_question|length > 180 %}…{% endif %}</p>
+      <p class="muted small-print analysis-feedback-preview rgee-render-math">{{ a.essay_question }}</p>
       <form method="post" action="/professor/question-analysis/feedback" class="analysis-feedback-form">
         <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
         <input type="hidden" name="session_id" value="{{ a.session_id }}">
@@ -58,8 +68,64 @@
           maxlength="20000"
           placeholder="e.g. tighten scope, add context, or flag ambiguity…"
         >{{ feedback_by_question.get(a.question_id, '') }}</textarea>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-secondary btn-sm">Save note</button>
+        <div class="analysis-feedback-form-footer">
+          <div class="analysis-manual-rank-row">
+            <div
+              class="analysis-manual-rank-block"
+              data-rank-label="Qly"
+              data-pill-id="pill-man-q-{{ a.question_id }}"
+            >
+              <span class="field-label">Your Qly</span>
+              <div
+                class="analysis-rank-bars"
+                role="slider"
+                tabindex="0"
+                aria-label="Manual essay quality rank 1 to 4"
+                aria-valuemin="0"
+                aria-valuemax="4"
+                data-initial="{{ man_q or 0 }}"
+              >
+                {% for n in range(1, 5) %}
+                <button
+                  type="button"
+                  class="analysis-rank-bar"
+                  data-value="{{ n }}"
+                  aria-label="Quality rank {{ n }} of 4"
+                ></button>
+                {% endfor %}
+              </div>
+              <input type="hidden" name="manual_quality_code" value="{{ man_q or 0 }}">
+            </div>
+            <div
+              class="analysis-manual-rank-block"
+              data-rank-label="Lvl"
+              data-pill-id="pill-man-g-{{ a.question_id }}"
+            >
+              <span class="field-label">Your Lvl</span>
+              <div
+                class="analysis-rank-bars"
+                role="slider"
+                tabindex="0"
+                aria-label="Manual grade appropriateness rank 1 to 4"
+                aria-valuemin="0"
+                aria-valuemax="4"
+                data-initial="{{ man_g or 0 }}"
+              >
+                {% for n in range(1, 5) %}
+                <button
+                  type="button"
+                  class="analysis-rank-bar"
+                  data-value="{{ n }}"
+                  aria-label="Appropriateness rank {{ n }} of 4"
+                ></button>
+                {% endfor %}
+              </div>
+              <input type="hidden" name="manual_grade_appropriateness_code" value="{{ man_g or 0 }}">
+            </div>
+          </div>
+          <div class="form-actions analysis-feedback-save-actions">
+            <button type="submit" class="btn btn-secondary btn-sm">Save note &amp; ranks</button>
+          </div>
         </div>
       </form>
     </div>
@@ -71,4 +137,5 @@
   <strong>No questions in this run.</strong> Open <a href="{{ url_analysis_scored }}">Question analysis</a>, choose filters, run analysis, then return here using the navigation links.
 </aside>
 {% endif %}
+<script src="/static/analysis_manual_rank.js" defer></script>
 {% endblock %}

@@ -1,0 +1,17 @@
+{# Icon-only control for Web Share API + export dialog fallback. Pass: share_id, share_disabled, share_label #}
+<button
+  type="button"
+  class="btn btn-secondary share-universal-btn"
+  id="{{ share_id }}"
+  aria-label="{{ share_label | default('Share') }}"
+  title="{{ share_label | default('Share') }}"
+  aria-haspopup="dialog"
+  aria-controls="analysis-share-dialog"
+  {% if share_disabled %}disabled{% endif %}
+>
+  <svg class="share-universal-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 16V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m8 8 4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>

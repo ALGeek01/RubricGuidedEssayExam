@@ -126,6 +126,9 @@ class QuestionAnalysisFeedback(Base):
         index=True,
     )
     instructor_note: Mapped[str] = mapped_column(Text, default="")
+    # Instructor override of embedding codes (1–4); NULL = not set manually.
+    manual_quality_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    manual_grade_appropriateness_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -635,6 +638,7 @@ def init_db() -> None:
     _migrate_sqlite_schema()
     _migrate_students_and_exam_session_fk()
     _migrate_add_nominated_exam_template_id_column()
+    _migrate_question_analysis_feedback_manual_ranks()
     _backfill_exam_codes_and_enforce_unique_index()
 
 
@@ -664,6 +668,38 @@ def _migrate_add_nominated_exam_template_id_column() -> None:
                 msg = str(e).lower()
                 if "duplicate column" not in msg and "already exists" not in msg:
                     raise
+
+
+def _migrate_question_analysis_feedback_manual_ranks() -> None:
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    if "question_analysis_feedback" not in tables:
+        return
+    col_names = {c["name"] for c in insp.get_columns("question_analysis_feedback")}
+    dialect = engine.dialect.name
+    additions = []
+    if "manual_quality_code" not in col_names:
+        additions.append("manual_quality_code INTEGER")
+    if "manual_grade_appropriateness_code" not in col_names:
+        additions.append("manual_grade_appropriateness_code INTEGER")
+    if not additions:
+        return
+    with engine.begin() as conn:
+        for col_def in additions:
+            col_name = col_def.split()[0]
+            if dialect == "postgresql":
+                conn.execute(
+                    text(f"ALTER TABLE question_analysis_feedback ADD COLUMN IF NOT EXISTS {col_def}")
+                )
+            else:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE question_analysis_feedback ADD COLUMN {col_def}")
+                    )
+                except Exception as e:
+                    msg = str(e).lower()
+                    if "duplicate column" not in msg and "already exists" not in msg:
+                        raise
 
 
 def get_db():

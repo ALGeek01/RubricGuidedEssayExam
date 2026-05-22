@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
@@ -19,6 +20,7 @@ from app.question_analysis import (
     analysis_dataframe,
     analyze_questions_semantic,
     build_analysis_chart_payload,
+    build_analysis_views_payload,
     summarize_by_category,
 )
 
@@ -75,6 +77,84 @@ def normalize_question_analysis_params(
     )
 
 
+def build_analysis_share_snapshot(
+    *,
+    state: QuestionAnalysisFilterState,
+    chart_payload: dict[str, Any] | None,
+    methodology_note: str,
+    analysis_rows: list[Any],
+    manual_rank_by_question: dict[int, dict[str, int | None]],
+    feedback_by_question: dict[int, str],
+    compare_by_label: str,
+    compare_options: dict[str, str],
+    uses_remote_agent: bool,
+    manual_rank_count_quality: int,
+    manual_rank_count_grade: int,
+    url_analysis_scored: str,
+) -> dict[str, Any] | None:
+    """JSON-serializable export bundle for Share (PDF / email / download)."""
+    if not chart_payload or chart_payload.get("empty") or not analysis_rows:
+        return None
+
+    level_label = ""
+    if state.education_level:
+        level_label = next(
+            (lvl.label for lvl in EDUCATION_LEVELS if lvl.id == state.education_level),
+            state.education_level,
+        )
+
+    llm_labels = {"all": "Mock + Production", "mock": "Mock only", "production": "Production only"}
+
+    questions: list[dict[str, Any]] = []
+    for a in analysis_rows:
+        mr = manual_rank_by_question.get(a.question_id) or {}
+        note = (feedback_by_question.get(a.question_id) or "").strip()
+        questions.append(
+            {
+                "session_id": a.session_id,
+                "exam_code": a.exam_code or "",
+                "question_id": a.question_id,
+                "question_index": int(a.question_index),
+                "education_level": a.education_level,
+                "llm_mode": "mock" if a.use_mock_llm else "production",
+                "quality_code": int(a.quality_code),
+                "grade_appropriateness_code": int(a.grade_appropriateness_code),
+                "manual_quality_code": mr.get("quality"),
+                "manual_grade_code": mr.get("grade"),
+                "relevance_score": float(round(a.relevance_score, 2)),
+                "quality_score": float(round(a.quality_score, 2)),
+                "humor_score": float(round(a.humor_score, 2)),
+                "instructor_note": note[:500] if note else "",
+                "essay_preview": (a.essay_question or "")[:280],
+            }
+        )
+
+    return {
+        "format": "rgee-analysis-share-v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "page_path": url_analysis_scored,
+        "filters": {
+            "session_id": state.session_id,
+            "education_level": state.education_level,
+            "education_level_label": level_label or "Any level",
+            "llm_mode": state.llm_mode,
+            "llm_mode_label": llm_labels.get(state.llm_mode, state.llm_mode),
+            "compare_by": state.compare_by,
+            "compare_by_label": compare_by_label,
+            "compare_options": compare_options,
+            "sample_limit": state.sample_limit,
+        },
+        "methodology_note": methodology_note,
+        "uses_remote_agent": uses_remote_agent,
+        "manual_rank_counts": {
+            "quality": manual_rank_count_quality,
+            "grade": manual_rank_count_grade,
+        },
+        "metrics": chart_payload,
+        "questions": questions,
+    }
+
+
 def filter_query_string(state: QuestionAnalysisFilterState, *, run: str | None = None) -> str:
     """Rebuild GET query for question-analysis family URLs."""
     params: dict[str, Any] = {}
@@ -129,6 +209,7 @@ async def load_question_analysis_context(
     analysis_rows: list[Any] = []
     methodology_note = ""
     chart_payload: dict[str, Any] | None = None
+    analysis_df = None
     category_table = None
     recent_sessions = (
         db.query(ExamSession).order_by(ExamSession.created_at.desc()).limit(80).all()
@@ -157,11 +238,15 @@ async def load_question_analysis_context(
                     )
 
                 analysis_rows, methodology_note = await asyncio.to_thread(_local_run)
-            df = analysis_dataframe(analysis_rows)
+            analysis_df = analysis_dataframe(analysis_rows)
             category_table = (
-                summarize_by_category(df, compare_by=state.compare_by) if not df.empty else None
+                summarize_by_category(analysis_df, compare_by=state.compare_by)
+                if not analysis_df.empty
+                else None
             )
-            chart_payload = build_analysis_chart_payload(df, compare_by=state.compare_by)
+            chart_payload = build_analysis_chart_payload(
+                analysis_df, compare_by=state.compare_by
+            )
         except RuntimeError as e:
             error_message = str(e)
             methodology_note = ""
@@ -177,6 +262,7 @@ async def load_question_analysis_context(
         category_records = category_table.to_dict("records")
 
     feedback_by_question: dict[int, str] = {}
+    manual_rank_by_question: dict[int, dict[str, int | None]] = {}
     analysis_session_ids_ordered: list[int] = []
     sessions_published_nominated_exam: set[int] = set()
     nominated_access_codes_by_session: dict[int, list[str]] = {}
@@ -188,6 +274,13 @@ async def load_question_analysis_context(
             .all()
         )
         feedback_by_question = {r.question_id: (r.instructor_note or "") for r in fb_rows}
+        manual_rank_by_question = {
+            r.question_id: {
+                "quality": r.manual_quality_code,
+                "grade": r.manual_grade_appropriateness_code,
+            }
+            for r in fb_rows
+        }
         seen_s: set[int] = set()
         for a in analysis_rows:
             if a.session_id not in seen_s:
@@ -220,8 +313,30 @@ async def load_question_analysis_context(
         sp = db.query(ExamSession).filter(ExamSession.id.in_(analysis_session_ids_ordered)).all()
         nomination_panel_sessions = sorted(sp, key=lambda s: order_map.get(s.id, 9999))
 
+    if (
+        chart_payload is not None
+        and not chart_payload.get("empty")
+        and analysis_df is not None
+        and not analysis_df.empty
+    ):
+        chart_payload["views"] = build_analysis_views_payload(
+            analysis_df,
+            manual_rank_by_question,
+            compare_by=state.compare_by,
+        )
+
     fq = filter_query_string(state)
     fq_scored = filter_query_string(state, run="1")
+
+    manual_rank_count_quality = 0
+    manual_rank_count_grade = 0
+    if analysis_rows:
+        for a in analysis_rows:
+            mr = manual_rank_by_question.get(a.question_id) or {}
+            if mr.get("quality"):
+                manual_rank_count_quality += 1
+            if mr.get("grade"):
+                manual_rank_count_grade += 1
 
     nominated_sessions_summary: str = ""
     if analysis_session_ids_ordered and analysis_rows:
@@ -230,6 +345,23 @@ async def load_question_analysis_context(
         nominated_sessions_summary = (
             f"In this sample, {n_pub} of {n_sessions} exam session(s) have a nominated exam "
             f"published for students; the rest do not yet. Open Nominated exams to publish or review."
+        )
+
+    share_snapshot = None
+    if state.run_analysis and analysis_rows:
+        share_snapshot = build_analysis_share_snapshot(
+            state=state,
+            chart_payload=chart_payload,
+            methodology_note=methodology_note,
+            analysis_rows=analysis_rows,
+            manual_rank_by_question=manual_rank_by_question,
+            feedback_by_question=feedback_by_question,
+            compare_by_label=COMPARE_OPTIONS.get(state.compare_by, "Category"),
+            compare_options=COMPARE_OPTIONS,
+            uses_remote_agent=uses_remote_agent,
+            manual_rank_count_quality=manual_rank_count_quality,
+            manual_rank_count_grade=manual_rank_count_grade,
+            url_analysis_scored=f"/professor/question-analysis?{fq_scored}",
         )
 
     return {
@@ -251,6 +383,9 @@ async def load_question_analysis_context(
         "compare_by_label": COMPARE_OPTIONS.get(state.compare_by, "Category"),
         "error_message": error_message,
         "feedback_by_question": feedback_by_question,
+        "manual_rank_by_question": manual_rank_by_question,
+        "manual_rank_count_quality": manual_rank_count_quality,
+        "manual_rank_count_grade": manual_rank_count_grade,
         "sessions_published_nominated_exam": sessions_published_nominated_exam,
         "nominated_access_codes_by_session": nominated_access_codes_by_session,
         "analysis_session_ids_ordered": analysis_session_ids_ordered,
@@ -262,4 +397,5 @@ async def load_question_analysis_context(
         "url_analysis_main": f"/professor/question-analysis?{fq}",
         "url_analysis_scored": f"/professor/question-analysis?{fq_scored}",
         "nominated_sessions_summary": nominated_sessions_summary,
+        "share_snapshot": share_snapshot,
     }

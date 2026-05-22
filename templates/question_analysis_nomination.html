@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Nominated exams · Question analysis{% endblock %}
 {% block wrap_modifier %} wrap--analysis{% endblock %}
+{% block extra_head %}
+{% include 'includes/katex_head.html' %}
+{% endblock %}
 {% block body %}
 <section class="hero hero-compact">
   <div class="hero-row">
@@ -97,7 +100,7 @@
           <th scope="col">Include</th>
           <th scope="col">Session</th>
           <th scope="col">Q</th>
-          <th scope="col">Essay prompt (trimmed)</th>
+          <th scope="col">Essay prompt</th>
           <th scope="col">Instructor manual note</th>
         </tr>
       </thead>
@@ -109,7 +112,7 @@
           </td>
           <td class="mono-tight">{{ a.session_id }}</td>
           <td>{{ a.question_index + 1 }}</td>
-          <td>{{ a.essay_question[:220] }}{% if a.essay_question|length > 220 %}…{% endif %}</td>
+          <td class="analysis-nomination-question-cell rgee-render-math">{{ a.essay_question }}</td>
           <td class="muted small-print">{% set note = feedback_by_question.get(a.question_id, '') %}{{ (note or '—')[:400] }}{% if note|length > 400 %}…{% endif %}</td>
         </tr>
         {% endfor %}

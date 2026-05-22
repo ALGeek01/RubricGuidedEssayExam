@@ -1,13 +1,24 @@
 {% extends "base.html" %}
+{% from 'includes/analysis_rank_readonly.html' import rank_bars_readonly %}
 {% block title %}Question analysis{% endblock %}
 {% block wrap_modifier %} wrap--analysis{% endblock %}
+{% block extra_head %}
+{% include 'includes/katex_head.html' %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" defer></script>
+{% endblock %}
 {% block body %}
 <section class="hero hero-compact">
   <div class="hero-row">
     <h1 class="hero-title">Exam question analysis</h1>
-    <form method="post" action="/professor/logout" class="hero-inline-form">
-      <button type="submit" class="btn btn-secondary">Log out</button>
-    </form>
+    <div class="hero-inline-actions">
+      {% set share_id = 'btn-analysis-share' %}
+      {% set share_disabled = not share_snapshot %}
+      {% set share_label = 'Share analysis snapshot' if share_snapshot else 'Run analysis first to share' %}
+      {% include 'includes/share_universal_button.html' %}
+      <form method="post" action="/professor/logout" class="hero-inline-form">
+        <button type="submit" class="btn btn-secondary">Log out</button>
+      </form>
+    </div>
   </div>
   <p class="hero-lead">
     Use the filters below, then <strong>Run analysis</strong> to score prompts with <strong>two 4-point research codes</strong>
@@ -156,10 +167,11 @@
 {% endif %}
 
 {% if run_analysis %}
-<section class="analysis-core" id="semantic-analysis-results" aria-labelledby="analysis-core-heading">
+<section class="analysis-core" id="semantic-analysis-results" data-analysis-view="ai" aria-labelledby="analysis-core-heading">
   <h2 id="analysis-core-heading" class="analysis-section-heading">Semantic analysis results</h2>
   <p class="muted small-print analysis-section-lead">
-    Everything in this section is <strong>embedding-based scoring only</strong>: charts (Chart.js), category summaries (pandas), and expandable cards with AI-derived codes and rationale.
+    Charts and tables summarize <strong>AI embedding codes</strong>; expandable cards also show <strong>instructor manual ranks</strong> and notes when you have saved them on
+    <a href="{{ url_manual_feedback }}">Manual feedback</a>.
   </p>
   <nav class="analysis-subpage-links" aria-label="Instructor follow-up pages">
     <a class="btn btn-primary analysis-subpage-link-btn" href="{{ url_nomination }}">Nominated exams</a>
@@ -169,12 +181,22 @@
   <p class="muted small-print analysis-nominated-summary" id="analysis-nominated-summary">{{ nominated_sessions_summary }}</p>
   {% endif %}
 
+{% if share_snapshot %}
+<script type="application/json" id="analysis-share-payload">{{ share_snapshot | tojson }}</script>
+{% endif %}
 {% if chart_payload is not none and not chart_payload.get('empty') %}
 <script type="application/json" id="analysis-chart-payload">{{ chart_payload | tojson }}</script>
-<div class="analysis-dashboard" id="analysis-dashboard">
+<div class="analysis-dashboard" id="analysis-dashboard" data-analysis-view="ai">
   <header class="analysis-dashboard-header">
-    <h2 class="analysis-dashboard-title">Analysis overview</h2>
-    <p class="analysis-dashboard-lead muted">Interactive widgets · colors match the RGEE theme · resize the window to reflow the grid.</p>
+    <div class="analysis-dashboard-header-text">
+      <h2 class="analysis-dashboard-title" id="analysis-dashboard-title">Analysis overview</h2>
+      <p class="analysis-dashboard-lead muted" id="analysis-dashboard-lead">AI embedding ranks (1–4) and supplementary 0–10 signals for this filtered sample.</p>
+    </div>
+    <div class="analysis-view-toggle mode-toggle-wrap" role="tablist" aria-label="Ranking view">
+      <button type="button" class="mode-pill mode-pill-compact analysis-view-btn is-active" role="tab" aria-selected="true" data-view="ai" id="analysis-view-ai">AI ranking</button>
+      <button type="button" class="mode-pill mode-pill-compact analysis-view-btn" role="tab" aria-selected="false" data-view="manual" id="analysis-view-manual">Manual ranking</button>
+      <button type="button" class="mode-pill mode-pill-compact analysis-view-btn" role="tab" aria-selected="false" data-view="compare" id="analysis-view-compare">Compare</button>
+    </div>
   </header>
   <div class="analysis-dashboard-grid">
     <div class="analysis-widget analysis-widget--stat analysis-widget--span-4">
@@ -187,10 +209,10 @@
       <p class="analysis-widget-value" id="metric-sessions">—</p>
       <p class="analysis-widget-foot muted">Distinct session ids</p>
     </div>
-    <div class="analysis-widget analysis-widget--stat analysis-widget--stat-accent analysis-widget--span-4">
-      <p class="analysis-widget-kicker">Mean relevance</p>
-      <p class="analysis-widget-value" id="metric-relevance">—</p>
-      <p class="analysis-widget-foot muted">0–10 embedding signal</p>
+    <div class="analysis-widget analysis-widget--stat analysis-widget--stat-accent analysis-widget--span-4" id="metric-accent-widget">
+      <p class="analysis-widget-kicker" id="metric-accent-kicker">Mean relevance</p>
+      <p class="analysis-widget-value" id="metric-accent-value">—</p>
+      <p class="analysis-widget-foot muted" id="metric-accent-foot">0–10 embedding signal</p>
     </div>
 
     <div class="analysis-widget analysis-widget--chart analysis-widget--span-6">
@@ -206,10 +228,17 @@
       </div>
     </div>
 
-    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12">
-      <p class="analysis-widget-title">Supplementary embedding means</p>
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12" id="widget-supplementary-bars" data-show-views="ai">
+      <p class="analysis-widget-title" id="widget-supplementary-title">Supplementary embedding means</p>
       <div class="analysis-chart-canvas-wrap analysis-chart-canvas-wrap--short">
         <canvas id="chart-overall-bars" aria-label="Horizontal bar chart of mean relevance quality and humor"></canvas>
+      </div>
+    </div>
+
+    <div class="analysis-widget analysis-widget--chart analysis-widget--span-12 analysis-view-only" id="widget-compare-delta" data-show-views="compare" hidden>
+      <p class="analysis-widget-title">Manual − AI code delta (paired questions)</p>
+      <div class="analysis-chart-canvas-wrap analysis-chart-canvas-wrap--short">
+        <canvas id="chart-compare-delta" aria-label="Bar chart of manual minus AI rank deltas"></canvas>
       </div>
     </div>
 
@@ -232,6 +261,7 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script src="/static/question_analysis_charts.js" defer></script>
+<script src="/static/analysis_view_switcher.js" defer></script>
 {% elif chart_payload is not none and chart_payload.get('empty') %}
 <aside class="callout callout-tip" role="status">
   <strong>No chart data:</strong> this filter returned no questions to score. Adjust filters or generate exams, then run again.
@@ -239,50 +269,13 @@
 {% endif %}
 
 {% if category_records %}
-<div class="panel panel-table">
+<div class="panel panel-table" id="analysis-category-panel" data-compare-by="{{ compare_by }}" data-compare-label="{{ compare_by_label }}">
   <h2 class="panel-title">Category summary</h2>
-  <p class="muted small-print">Pandas aggregates: continuous means plus <strong>mean code</strong> (average tier —
-    analogous to averaging Likert-like codes for exploratory views; primary analysis should still use distributions).</p>
+  <p class="muted small-print" id="analysis-category-subtitle">Pandas aggregates for the active ranking view.</p>
   <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th scope="col">{{ compare_by_label }}</th>
-          <th scope="col">LLM</th>
-          <th scope="col">Mean Q code</th>
-          <th scope="col">Mean appr. code</th>
-          <th scope="col">Mean relevance</th>
-          <th scope="col">Mean embed. Q</th>
-          <th scope="col">Mean humor</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in category_records %}
-        <tr>
-          <td>
-            {% if compare_by == "education_level" %}
-            <span class="pill pill-level pill-sm">{{ row.education_level | level_label }}</span>
-            {% elif compare_by == "llm_mode" %}
-            <span class="pill pill-llm pill-sm">{{ row.llm_mode }}</span>
-            {% elif compare_by == "quality_code" %}
-            <span class="pill pill-sm">Code {{ row.quality_code }}</span>
-            {% elif compare_by == "grade_appropriateness_code" %}
-            <span class="pill pill-sm">Code {{ row.grade_appropriateness_code }}</span>
-            {% elif compare_by == "session_id" %}
-            <a href="/professor/exam/{{ row.session_id }}">#{{ row.session_id }}</a>
-            {% else %}
-            —
-            {% endif %}
-          </td>
-          <td>{% if row.llm_mode is defined %}<span class="pill pill-llm pill-sm">{{ row.llm_mode }}</span>{% else %}—{% endif %}</td>
-          <td>{{ "%.2f"|format(row.mean_quality_code) }}</td>
-          <td>{{ "%.2f"|format(row.mean_grade_approp_code) }}</td>
-          <td>{{ "%.2f"|format(row.relevance_score) }}</td>
-          <td>{{ "%.2f"|format(row.quality_score) }}</td>
-          <td>{{ "%.2f"|format(row.humor_score) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
+    <table class="data-table" id="analysis-category-table">
+      <thead id="analysis-category-thead"></thead>
+      <tbody id="analysis-category-tbody"></tbody>
     </table>
   </div>
 </div>
@@ -294,17 +287,26 @@
     <span class="pill pill-sm analysis-detail-pill">Click a row to expand</span>
   </div>
   <p class="muted small-print analysis-detail-subtitle">
-    Each card is a question instance: collapsed view shows session, question number, codes, and a short prompt preview.
-    Expand for full coding rationale, 0–10 supplementary notes, and the full prompt text.
+    Each card is a question instance: collapsed view shows session, question number, <strong>AI</strong> and <strong>manual</strong> codes (1–4), and a short prompt preview.
+    Expand for embedding rationale, supplementary 0–10 signals, instructor manual ranks, notes, and the full prompt.
+    {% if manual_rank_count_quality or manual_rank_count_grade %}
+    In this sample, manual Qly is set for {{ manual_rank_count_quality }} question(s) and manual Lvl for {{ manual_rank_count_grade }}.
+    {% else %}
+    No manual ranks saved yet — use <a href="{{ url_manual_feedback }}">Manual feedback</a> to add them.
+    {% endif %}
   </p>
   <div class="analysis-legend">
-    <span><strong>Qly:</strong> Essay question quality code (1–4)</span>
-    <span><strong>Lvl:</strong> Grade-level appropriateness code (1–4)</span>
+    <span><strong>AI Qly / Lvl:</strong> Embedding codes (1–4)</span>
+    <span><strong>You Qly / Lvl:</strong> Instructor manual ranks (1–4)</span>
     <span><strong>Rel:</strong> Relevance signal (0–10)</span>
     <span><strong>Emb.Q:</strong> Embedding quality signal (0–10)</span>
   </div>
   <div class="analysis-detail-list">
     {% for a in analysis_rows %}
+    {% set mr = manual_rank_by_question.get(a.question_id, {}) %}
+    {% set man_q = mr.get('quality') %}
+    {% set man_g = mr.get('grade') %}
+    {% set ins_note = feedback_by_question.get(a.question_id, '') %}
     <details class="analysis-detail-card">
       <summary class="analysis-detail-card-summary">
         <span class="analysis-detail-card-chevron" aria-hidden="true"></span>
@@ -313,14 +315,41 @@
           {% if a.exam_code %}<span class="mono-tight muted analysis-detail-exam-code">{{ a.exam_code }}</span>{% endif %}
           <span class="analysis-detail-q-label">Q{{ a.question_index + 1 }}</span>
           <span class="analysis-detail-card-pills">
-            <span class="pill pill-sm" title="Essay question quality">Qly {{ a.quality_code }}/4</span>
-            <span class="pill pill-sm" title="Grade appropriateness">Lvl {{ a.grade_appropriateness_code }}/4</span>
+            <span class="pill pill-sm pill-rank-ai analysis-pill-ai" title="AI essay quality">AI Qly {{ a.quality_code }}/4</span>
+            <span class="pill pill-sm pill-rank-ai analysis-pill-ai" title="AI grade fit">AI Lvl {{ a.grade_appropriateness_code }}/4</span>
+            <span class="pill pill-sm pill-rank-manual analysis-pill-manual" title="Your quality rank">You Qly {% if man_q %}{{ man_q }}/4{% else %}—{% endif %}</span>
+            <span class="pill pill-sm pill-rank-manual analysis-pill-manual" title="Your appropriateness rank">You Lvl {% if man_g %}{{ man_g }}/4{% else %}—{% endif %}</span>
           </span>
         </span>
-        <span class="analysis-detail-card-teaser muted">{{ a.essay_question[:140] }}{% if a.essay_question|length > 140 %}…{% endif %}</span>
+        <span class="analysis-detail-card-teaser muted rgee-render-math">{{ a.essay_question }}</span>
       </summary>
       <div class="analysis-detail-card-body">
-        <div class="analysis-detail-card-columns">
+        <div class="analysis-detail-compare-panel analysis-view-compare-only" hidden>
+          <p class="analysis-widget-title analysis-detail-section-title">AI vs your ranks</p>
+          <div class="analysis-compare-grid">
+            <div class="analysis-compare-row">
+              <span class="analysis-compare-axis">Quality (Qly)</span>
+              <span class="pill pill-sm pill-rank-ai">AI {{ a.quality_code }}</span>
+              <span class="pill pill-sm pill-rank-manual">You {% if man_q %}{{ man_q }}{% else %}—{% endif %}</span>
+              {% if man_q %}
+              <span class="analysis-compare-delta {% if man_q == a.quality_code %}analysis-compare-delta--match{% else %}analysis-compare-delta--diff{% endif %}">Δ {{ man_q - a.quality_code }}</span>
+              {% else %}
+              <span class="muted small-print">No manual rank</span>
+              {% endif %}
+            </div>
+            <div class="analysis-compare-row">
+              <span class="analysis-compare-axis">Level (Lvl)</span>
+              <span class="pill pill-sm pill-rank-ai">AI {{ a.grade_appropriateness_code }}</span>
+              <span class="pill pill-sm pill-rank-manual">You {% if man_g %}{{ man_g }}{% else %}—{% endif %}</span>
+              {% if man_g %}
+              <span class="analysis-compare-delta {% if man_g == a.grade_appropriateness_code %}analysis-compare-delta--match{% else %}analysis-compare-delta--diff{% endif %}">Δ {{ man_g - a.grade_appropriateness_code }}</span>
+              {% else %}
+              <span class="muted small-print">No manual rank</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="analysis-detail-card-columns analysis-detail-ai-section">
           <div class="analysis-detail-card-col">
             <p class="analysis-widget-title analysis-detail-section-title">Coding rationale</p>
             <div class="analysis-note-block">
@@ -348,10 +377,40 @@
             </div>
           </div>
         </div>
+        <div class="analysis-detail-manual-wrap analysis-detail-manual-section">
+          <p class="analysis-widget-title analysis-detail-section-title">Instructor manual review</p>
+          <div class="analysis-detail-manual-codes">
+            <div class="analysis-note-block analysis-manual-code-block">
+              <p class="analysis-note-label">Quality · Qly (1–4)</p>
+              <div class="analysis-rank-compare-line">
+                <span class="pill pill-sm pill-rank-ai">AI {{ a.quality_code }}/4</span>
+                <span class="pill pill-sm pill-rank-manual">You {% if man_q %}{{ man_q }}/4{% else %}not set{% endif %}</span>
+              </div>
+              {{ rank_bars_readonly(man_q) }}
+            </div>
+            <div class="analysis-note-block analysis-manual-code-block">
+              <p class="analysis-note-label">Appropriateness · Lvl (1–4)</p>
+              <div class="analysis-rank-compare-line">
+                <span class="pill pill-sm pill-rank-ai">AI {{ a.grade_appropriateness_code }}/4</span>
+                <span class="pill pill-sm pill-rank-manual">You {% if man_g %}{{ man_g }}/4{% else %}not set{% endif %}</span>
+              </div>
+              {{ rank_bars_readonly(man_g) }}
+            </div>
+          </div>
+          {% if ins_note %}
+          <div class="analysis-note-block analysis-manual-note-block">
+            <p class="analysis-note-label">Your note</p>
+            <p>{{ ins_note }}</p>
+          </div>
+          {% endif %}
+          <p class="muted small-print analysis-manual-edit-link">
+            <a href="{{ url_manual_feedback }}">Edit manual ranks and notes</a>
+          </p>
+        </div>
         <div class="analysis-detail-prompt-wrap">
           <p class="analysis-widget-title analysis-detail-section-title">Prompt</p>
           <div class="analysis-note-block analysis-detail-prompt-block">
-            <p class="muted essay-excerpt">{{ a.essay_question }}</p>
+            <p class="muted essay-excerpt rgee-render-math">{{ a.essay_question }}</p>
           </div>
         </div>
       </div>
@@ -444,4 +503,42 @@
   });
 })();
 </script>
+
+<button type="button" id="analysis-share-backdrop" class="analysis-share-backdrop" hidden aria-hidden="true" tabindex="-1"></button>
+<div
+  id="analysis-share-dialog"
+  class="analysis-share-dialog"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="analysis-share-title"
+  hidden
+>
+  <div class="analysis-share-header">
+    <h2 id="analysis-share-title" class="analysis-share-title">Share analysis snapshot</h2>
+    <button type="button" class="analysis-share-close" id="analysis-share-close" aria-label="Close">×</button>
+  </div>
+  <p class="analysis-share-lead muted">
+    Export a comprehensive snapshot: filter context, AI / manual / compare metrics, chart images, and per-question codes.
+    On phones and supported browsers, the <strong>share icon</strong> opens the system share sheet (AirDrop, Mail, Drive, etc.).
+    {% if not share_snapshot %}<strong>Run analysis</strong> first to populate export data.{% endif %}
+  </p>
+  <div class="analysis-share-options" role="group" aria-label="Export format">
+    <button type="button" class="btn btn-primary analysis-share-option" data-share-action="pdf" {% if not share_snapshot %}disabled{% endif %}>
+      Save as PDF
+    </button>
+    <button type="button" class="btn btn-secondary analysis-share-option" data-share-action="email" {% if not share_snapshot %}disabled{% endif %}>
+      Email summary
+    </button>
+    <button type="button" class="btn btn-secondary analysis-share-option" data-share-action="json" {% if not share_snapshot %}disabled{% endif %}>
+      Download JSON
+    </button>
+  </div>
+  <p class="muted small-print analysis-share-hint">
+    PDF and JSON include chart captures for <strong>AI</strong>, <strong>Manual</strong>, and <strong>Compare</strong> views (brief on-screen refresh while capturing).
+    Email opens your mail client with a text summary; attach the PDF or JSON from the other options for full detail.
+  </p>
+  <p class="analysis-share-status muted small-print" id="analysis-share-status" role="status" aria-live="polite"></p>
+</div>
+<div id="analysis-share-print-root" class="analysis-share-print-root" aria-hidden="true"></div>
+<script src="/static/analysis_share.js" defer></script>
 {% endblock %}

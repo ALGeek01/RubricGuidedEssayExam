@@ -1641,6 +1641,22 @@ def _safe_question_analysis_redirect(next_raw: str | None) -> str:
     return n
 
 
+def _parse_manual_analysis_code(raw: str) -> int | None:
+    """1–4 for manual rank; 0 / empty clears the override."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        v = int(s)
+    except ValueError:
+        return None
+    if v <= 0:
+        return None
+    if 1 <= v <= 4:
+        return v
+    return None
+
+
 @app.post("/professor/question-analysis/feedback")
 def professor_question_analysis_feedback(
     request: Request,
@@ -1648,12 +1664,16 @@ def professor_question_analysis_feedback(
     session_id: int = Form(),
     question_id: int = Form(),
     instructor_note: str = Form(""),
+    manual_quality_code: str = Form(""),
+    manual_grade_appropriateness_code: str = Form(""),
     next: str = Form("/professor/question-analysis"),
 ):
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
     note = (instructor_note or "").strip()[:20000]
+    man_q = _parse_manual_analysis_code(manual_quality_code)
+    man_g = _parse_manual_analysis_code(manual_grade_appropriateness_code)
     row = (
         db.query(QuestionAnalysisFeedback)
         .filter(
@@ -1664,6 +1684,8 @@ def professor_question_analysis_feedback(
     )
     if row:
         row.instructor_note = note
+        row.manual_quality_code = man_q
+        row.manual_grade_appropriateness_code = man_g
         row.updated_at = datetime.now(timezone.utc)
     else:
         db.add(
@@ -1671,6 +1693,8 @@ def professor_question_analysis_feedback(
                 session_id=int(session_id),
                 question_id=int(question_id),
                 instructor_note=note,
+                manual_quality_code=man_q,
+                manual_grade_appropriateness_code=man_g,
             )
         )
     db.commit()

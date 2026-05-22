@@ -448,6 +448,240 @@ def build_analysis_chart_payload(df: pd.DataFrame, compare_by: str = "education_
     return out
 
 
+def enrich_analysis_df_manual(
+    df: pd.DataFrame,
+    manual_rank_by_question: dict[int, dict[str, int | None]],
+) -> pd.DataFrame:
+    """Attach instructor manual rank columns keyed by question_id."""
+    if df.empty:
+        return df
+
+    def _pick(qid: int, key: str) -> int | None:
+        mr = manual_rank_by_question.get(int(qid), {})
+        v = mr.get(key)
+        return int(v) if v is not None else None
+
+    out = df.copy()
+    out["manual_quality_code"] = out["question_id"].map(lambda q: _pick(q, "quality"))
+    out["manual_grade_code"] = out["question_id"].map(lambda q: _pick(q, "grade"))
+    return out
+
+
+def _code_frequency_list(series: pd.Series) -> list[int]:
+    s = series.dropna()
+    if s.empty:
+        return [0, 0, 0, 0]
+    counts = s.astype(int).value_counts().reindex(range(1, 5), fill_value=0)
+    return [int(counts[i]) for i in range(1, 5)]
+
+
+def _category_group_cols(df: pd.DataFrame, compare_by: str) -> tuple[str, list[str]]:
+    allowed = {"education_level", "llm_mode", "session_id", "quality_code", "grade_appropriateness_code"}
+    group_key = compare_by if compare_by in allowed else "education_level"
+    group_cols = [group_key] if group_key == "llm_mode" else [group_key, "llm_mode"]
+    return group_key, group_cols
+
+
+def _category_label(row: pd.Series, group_key: str) -> str:
+    if group_key == "llm_mode":
+        return str(row["llm_mode"])[:56]
+    label = str(row[group_key])
+    if "llm_mode" in row.index and group_key != "llm_mode":
+        label = f"{label} ({row['llm_mode']})"
+    return label[:56]
+
+
+def summarize_manual_by_category(df: pd.DataFrame, compare_by: str = "education_level") -> list[dict[str, Any]]:
+    if df.empty:
+        return []
+    group_key, group_cols = _category_group_cols(df, compare_by)
+    g = (
+        df.groupby(group_cols, dropna=False)
+        .agg(
+            mean_manual_quality=("manual_quality_code", "mean"),
+            mean_manual_grade=("manual_grade_code", "mean"),
+            manual_qly_n=("manual_quality_code", lambda s: int(s.notna().sum())),
+            manual_lvl_n=("manual_grade_code", lambda s: int(s.notna().sum())),
+        )
+        .reset_index()
+        .sort_values(group_cols)
+    )
+    records: list[dict[str, Any]] = []
+    for _, row in g.iterrows():
+        rec: dict[str, Any] = {
+            "label": _category_label(row, group_key),
+            "manual_qly_n": int(row["manual_qly_n"]),
+            "manual_lvl_n": int(row["manual_lvl_n"]),
+        }
+        if group_key != "llm_mode":
+            rec[group_key] = row[group_key]
+        if "llm_mode" in row.index:
+            rec["llm_mode"] = row["llm_mode"]
+        if pd.notna(row["mean_manual_quality"]):
+            rec["mean_manual_quality"] = float(round(row["mean_manual_quality"], 3))
+        if pd.notna(row["mean_manual_grade"]):
+            rec["mean_manual_grade"] = float(round(row["mean_manual_grade"], 3))
+        records.append(rec)
+    return records
+
+
+def summarize_compare_by_category(df: pd.DataFrame, compare_by: str = "education_level") -> list[dict[str, Any]]:
+    if df.empty:
+        return []
+
+    def _agree_pct(ai: pd.Series, manual: pd.Series) -> float | None:
+        mask = ai.notna() & manual.notna()
+        if not mask.any():
+            return None
+        return float(round((ai[mask].astype(int) == manual[mask].astype(int)).mean() * 100.0, 1))
+
+    group_key, group_cols = _category_group_cols(df, compare_by)
+    rows: list[dict[str, Any]] = []
+    for keys, grp in df.groupby(group_cols, dropna=False):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        key_map = dict(zip(group_cols, keys))
+        row_series = pd.Series(key_map)
+        if "llm_mode" in grp.columns and group_key != "llm_mode":
+            row_series["llm_mode"] = grp["llm_mode"].iloc[0]
+        rec: dict[str, Any] = {
+            "label": _category_label(row_series, group_key),
+            "mean_ai_quality": float(round(grp["quality_code"].mean(), 3)),
+            "mean_ai_grade": float(round(grp["grade_appropriateness_code"].mean(), 3)),
+            "qly_agree_pct": _agree_pct(grp["quality_code"], grp["manual_quality_code"]),
+            "lvl_agree_pct": _agree_pct(
+                grp["grade_appropriateness_code"], grp["manual_grade_code"]
+            ),
+        }
+        mq = grp["manual_quality_code"].dropna()
+        mg = grp["manual_grade_code"].dropna()
+        if not mq.empty:
+            rec["mean_manual_quality"] = float(round(mq.astype(float).mean(), 3))
+        if not mg.empty:
+            rec["mean_manual_grade"] = float(round(mg.astype(float).mean(), 3))
+        for col in group_cols:
+            rec[col] = key_map[col]
+        rows.append(rec)
+    return rows
+
+
+def build_manual_view_payload(df: pd.DataFrame, compare_by: str = "education_level") -> dict[str, Any]:
+    if df.empty:
+        return {"empty": True}
+    mq = df["manual_quality_code"]
+    mg = df["manual_grade_code"]
+    qly_set = int(mq.notna().sum())
+    lvl_set = int(mg.notna().sum())
+    out: dict[str, Any] = {
+        "empty": False,
+        "no_manual": qly_set == 0 and lvl_set == 0,
+        "total": int(len(df)),
+        "manual_qly_set": qly_set,
+        "manual_lvl_set": lvl_set,
+        "quality_freq": _code_frequency_list(mq),
+        "grade_freq": _code_frequency_list(mg),
+        "overall": {},
+        "categories": summarize_manual_by_category(df, compare_by=compare_by),
+        "single_exam": None,
+    }
+    if qly_set:
+        out["overall"]["mean_quality"] = float(round(mq.dropna().astype(float).mean(), 2))
+    if lvl_set:
+        out["overall"]["mean_grade"] = float(round(mg.dropna().astype(float).mean(), 2))
+    if df["session_id"].nunique() == 1:
+        d3 = df.sort_values("question_index")
+        out["single_exam"] = {
+            "labels": [f"Q{int(i) + 1}" for i in d3["question_index"]],
+            "quality_code": [
+                int(x) if pd.notna(x) else None for x in d3["manual_quality_code"]
+            ],
+            "grade_code": [int(x) if pd.notna(x) else None for x in d3["manual_grade_code"]],
+        }
+    return out
+
+
+def build_compare_view_payload(df: pd.DataFrame, compare_by: str = "education_level") -> dict[str, Any]:
+    if df.empty:
+        return {"empty": True}
+
+    def _delta_freq(ai: pd.Series, manual: pd.Series) -> list[int]:
+        mask = ai.notna() & manual.notna()
+        if not mask.any():
+            return [0] * 7
+        deltas = (manual[mask].astype(int) - ai[mask].astype(int)).clip(-3, 3)
+        buckets = deltas.value_counts().reindex(range(-3, 4), fill_value=0)
+        return [int(buckets[i]) for i in range(-3, 4)]
+
+    def _pair_stats(ai: pd.Series, manual: pd.Series) -> dict[str, Any]:
+        mask = ai.notna() & manual.notna()
+        paired = int(mask.sum())
+        if paired == 0:
+            return {"paired": 0, "agree": 0, "agree_pct": None, "mean_abs_delta": None}
+        ai_v = ai[mask].astype(int)
+        man_v = manual[mask].astype(int)
+        agree = int((ai_v == man_v).sum())
+        deltas = (man_v - ai_v).abs()
+        return {
+            "paired": paired,
+            "agree": agree,
+            "agree_pct": float(round(agree / paired * 100.0, 1)),
+            "mean_abs_delta": float(round(deltas.mean(), 2)),
+        }
+
+    q_stats = _pair_stats(df["quality_code"], df["manual_quality_code"])
+    g_stats = _pair_stats(df["grade_appropriateness_code"], df["manual_grade_code"])
+
+    out: dict[str, Any] = {
+        "empty": False,
+        "total": int(len(df)),
+        "quality_freq_ai": _code_frequency_list(df["quality_code"]),
+        "grade_freq_ai": _code_frequency_list(df["grade_appropriateness_code"]),
+        "quality_freq_manual": _code_frequency_list(df["manual_quality_code"]),
+        "grade_freq_manual": _code_frequency_list(df["manual_grade_code"]),
+        "qly": q_stats,
+        "lvl": g_stats,
+        "delta_qly_freq": _delta_freq(df["quality_code"], df["manual_quality_code"]),
+        "delta_lvl_freq": _delta_freq(df["grade_appropriateness_code"], df["manual_grade_code"]),
+        "categories": summarize_compare_by_category(df, compare_by=compare_by),
+        "single_exam": None,
+    }
+    if df["session_id"].nunique() == 1:
+        d3 = df.sort_values("question_index")
+        out["single_exam"] = {
+            "labels": [f"Q{int(i) + 1}" for i in d3["question_index"]],
+            "ai_quality": [int(x) for x in d3["quality_code"]],
+            "man_quality": [
+                int(x) if pd.notna(x) else None for x in d3["manual_quality_code"]
+            ],
+            "ai_grade": [int(x) for x in d3["grade_appropriateness_code"]],
+            "man_grade": [int(x) if pd.notna(x) else None for x in d3["manual_grade_code"]],
+        }
+    return out
+
+
+def build_analysis_views_payload(
+    df: pd.DataFrame,
+    manual_rank_by_question: dict[int, dict[str, int | None]],
+    compare_by: str = "education_level",
+) -> dict[str, Any]:
+    """AI, manual, and compare dashboard payloads for in-page view switching."""
+    enriched = enrich_analysis_df_manual(df, manual_rank_by_question)
+    return {
+        "ai": build_analysis_chart_payload(df, compare_by=compare_by),
+        "manual": build_manual_view_payload(enriched, compare_by=compare_by),
+        "compare": build_compare_view_payload(enriched, compare_by=compare_by),
+        "category_tables": {
+            "ai": (
+                summarize_by_category(df, compare_by=compare_by).to_dict("records")
+                if not df.empty
+                else []
+            ),
+            "manual": summarize_manual_by_category(enriched, compare_by=compare_by),
+            "compare": summarize_compare_by_category(enriched, compare_by=compare_by),
+        },
+    }
+
+
 def summarize_by_category(df: pd.DataFrame, compare_by: str = "education_level") -> pd.DataFrame:
     """Aggregate summary by selected category (+ llm_mode when useful)."""
     if df.empty:

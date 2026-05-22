@@ -1,0 +1,12 @@
+{# Read-only signal bars for a saved manual rank (1–4). Pass rank_value or 0/None. #}
+{% macro rank_bars_readonly(rank_value) %}
+{% set v = (rank_value | default(0, true)) | int %}
+<div class="analysis-rank-bars analysis-rank-bars--readonly" aria-hidden="true">
+  {% for n in range(1, 5) %}
+  <span
+    class="analysis-rank-bar{% if v > 0 and n <= v %} is-lit{% endif %}{% if v > 0 and n == v %} is-active{% endif %}"
+    data-value="{{ n }}"
+  ></span>
+  {% endfor %}
+</div>
+{% endmacro %}

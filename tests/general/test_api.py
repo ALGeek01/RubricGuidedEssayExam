@@ -614,3 +614,75 @@ def test_nominated_exam_publish_and_student_start(client: TestClient, logged_in_
         follow_redirects=True,
     )
     assert client.get(f"/exam/{new_sid}/results").status_code == 200
+
+
+def test_manual_analysis_rank_persisted(logged_in_instructor: TestClient):
+    from app.database import (
+        ExamQuestion,
+        ExamSession,
+        QuestionAnalysisFeedback,
+        SessionLocal,
+        generate_unique_exam_code,
+        get_or_create_student,
+    )
+
+    db = SessionLocal()
+    try:
+        student = get_or_create_student(db, "manual-rank-student")
+        sess = ExamSession(
+            student_ref_id=student.id,
+            professor_domain="rank test domain",
+            exam_code=generate_unique_exam_code(db),
+            num_questions_planned=1,
+            status="completed",
+        )
+        db.add(sess)
+        db.flush()
+        q = ExamQuestion(
+            session_id=sess.id,
+            question_index=0,
+            background_information="bg",
+            essay_question="Prompt with \\(x^2\\).",
+            grading_rubric='["criterion"]',
+        )
+        db.add(q)
+        db.commit()
+        sid, qid = sess.id, q.id
+    finally:
+        db.close()
+
+    r = logged_in_instructor.post(
+        "/professor/question-analysis/feedback",
+        data={
+            "session_id": str(sid),
+            "question_id": str(qid),
+            "instructor_note": "Looks good.",
+            "manual_quality_code": "3",
+            "manual_grade_appropriateness_code": "2",
+            "next": "/professor/question-analysis/manual-feedback",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(QuestionAnalysisFeedback)
+            .filter(
+                QuestionAnalysisFeedback.session_id == sid,
+                QuestionAnalysisFeedback.question_id == qid,
+            )
+            .one()
+        )
+        assert row.instructor_note == "Looks good."
+        assert row.manual_quality_code == 3
+        assert row.manual_grade_appropriateness_code == 2
+    finally:
+        db.close()
+
+    page = logged_in_instructor.get("/professor/question-analysis/manual-feedback?run=1")
+    assert page.status_code == 200
+    assert "You Qly 3/4" in page.text
+    assert "You Lvl 2/4" in page.text
+    assert "analysis-rank-bars" in page.text
