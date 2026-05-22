@@ -158,7 +158,7 @@
       {
         title: "Accessibility",
         html:
-          "<p>The floating <strong>accessibility</strong> button in the lower-right opens options such as a reading bar, high contrast, text size, and link underlining. These can also be tied to preference storage when you allow it.</p>",
+          "<p>The floating <strong>accessibility</strong> button in the lower-right opens options such as a reading bar, <strong>local speech feedback</strong> (choose your own voice), high contrast, text size, and link underlining. These can also be tied to preference storage when you allow it.</p>",
       },
       {
         title: "Students: start or resume",

@@ -48,7 +48,7 @@ flowchart LR
 
 | Role | Capabilities |
 |------|----------------|
-| **Student** | Start a **generated** exam (topic, education level, rubric strictness) or a **nominated** exam (fixed questions + 8-character ID); **resume** an in-progress attempt (5-character exam code); optional accessibility (theme, dyslexia-friendly font, pointer size); math in prompts via **KaTeX** |
+| **Student** | Start a **generated** exam (topic, education level, rubric strictness) or a **nominated** exam (fixed questions + 8-character ID); **resume** an in-progress attempt (5-character exam code); optional accessibility (theme, dyslexia-friendly font, pointer size, **local speech feedback**); math in prompts via **KaTeX** |
 | **Instructor** | View sessions and per-question detail; configure **Together.ai** credentials (keychain / encrypted file / `.env` fallback); run **question analysis**; save **manual 1–4 ranks** and notes; publish **nominated exams**; developer **performance log** |
 
 ---
@@ -108,6 +108,18 @@ Implementation: `chart_payload.views` (server) + `question_analysis_charts.js` +
 - After analysis, open **Nominated exams** to select questions (manual feedback notes can flow into student-facing copy), publish, and share the **8-character** access code
 - Analysis summary notes how many sessions in the current filter already have a nominated exam published
 
+### Accessibility — local speech (text-to-speech)
+
+Open the **accessibility** panel (floating button). Under **Focus & reading** → **Speech feedback (local narrator)**:
+
+- Uses the browser **Speech Synthesis API** and voices installed on the device (Windows, macOS, Linux) — works offline after voices load; no server audio generation.
+- **Not OpenAI Whisper** (that is speech-to-text). This feature is text-to-speech only.
+- The app does **not** pick a default voice; you must choose one from the list.
+- Optional **speak on click** (buttons, links) and **speak on selection** (highlighted text) for immediate feedback.
+- Filter voices by approximate gender label, and adjust rate, pitch, and volume; settings persist in `localStorage` with other accessibility options.
+
+Implemented in `static/accessibility.js` (same panel and saved preferences as other accessibility options).
+
 ### Optional analysis agent
 
 - **RGEE_Analysis_Agent** — separate FastAPI service (default port **8010**) for heavy embedding work
@@ -164,7 +176,7 @@ RubricGuidedEssayExam/
 | LLM | **Together.ai** chat completions (or mock) |
 | Analysis | **sentence-transformers** / **PyTorch** (in-process or via agent); **pandas** summaries; **Chart.js** dashboards |
 | Math UI | **KaTeX** (CDN) + `static/math-typeset.js` |
-| Front-end | Vanilla JS modules; theme + accessibility toggles |
+| Front-end | Vanilla JS modules; theme + accessibility toggles; local TTS via `speechSynthesis` |
 
 ---
 

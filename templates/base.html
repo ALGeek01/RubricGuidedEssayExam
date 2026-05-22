@@ -190,7 +190,7 @@
         <button type="button" class="a11y-close" id="a11y-close" aria-label="Close accessibility options">×</button>
       </div>
       <p class="a11y-hint">
-        Preferences are saved in this browser when you allow preference cookies; otherwise they apply for this tab session only (WCAG-aligned helpers: reading bar, contrast, text, links).
+        Preferences are saved in this browser when you allow preference cookies; otherwise they apply for this tab session only (WCAG-aligned helpers: reading bar, local speech feedback, contrast, text, links).
       </p>
 
       <div class="a11y-section">
@@ -208,12 +208,67 @@
           Enable reading bar
         </button>
         <p class="a11y-hint">
-          A full-width horizontal clear band with dimmed strips above and below. It tracks the pointer in real time (no easing delay; it does not snap to individual elements).
+          A full-width horizontal clear band with dimmed strips above and below. It tracks the pointer in real time (no easing delay; it does not snap to individual elements). Below, optional <strong>speech feedback</strong> reads buttons, links, or text you highlight using voices installed on your device.
         </p>
         <button type="button" class="a11y-toggle a11y-toggle--spaced" id="a11y-space-toggle" aria-pressed="false">
           Increase line &amp; letter spacing
         </button>
         <p class="a11y-hint">More space between lines and words (WCAG 1.4.12).</p>
+
+        <div class="a11y-subsection a11y-subsection-tts">
+          <h4 class="a11y-subsection-title">Speech feedback (local narrator)</h4>
+          <p class="a11y-hint" id="a11y-tts-unsupported" hidden>
+            Speech is not available in this browser. Try Chrome, Firefox, Safari, or Edge on your device.
+          </p>
+          <p class="a11y-hint">
+            Uses your computer’s built-in voices (offline). You choose the default voice — the app does not pick one for you.
+          </p>
+          <div class="a11y-btn-row a11y-btn-row--stack">
+            <button type="button" class="a11y-toggle" id="a11y-tts-enable" aria-pressed="false">
+              Enable speech feedback
+            </button>
+          </div>
+          <div class="a11y-tts-panel" hidden>
+            <div class="a11y-btn-row a11y-btn-row--stack">
+              <button type="button" class="a11y-toggle" id="a11y-tts-click" aria-pressed="true">
+                Speak on click (buttons &amp; links)
+              </button>
+              <button type="button" class="a11y-toggle" id="a11y-tts-select" aria-pressed="true">
+                Speak highlighted text
+              </button>
+            </div>
+            <div class="a11y-select-wrap">
+              <label for="a11y-tts-gender">Voice filter (approximate)</label>
+              <select id="a11y-tts-gender" class="a11y-select">
+                <option value="any">Any gender</option>
+                <option value="female">More female-presenting names</option>
+                <option value="male">More male-presenting names</option>
+              </select>
+            </div>
+            <div class="a11y-select-wrap">
+              <label for="a11y-tts-voice">Your default voice (required)</label>
+              <select id="a11y-tts-voice" class="a11y-select"></select>
+            </div>
+            <div class="a11y-tts-sliders">
+              <div class="a11y-tts-slider">
+                <label for="a11y-tts-rate">Rate <span id="a11y-tts-rate-val" class="a11y-tts-slider-val">1</span></label>
+                <input type="range" id="a11y-tts-rate" min="0.5" max="2" step="0.1" value="1">
+              </div>
+              <div class="a11y-tts-slider">
+                <label for="a11y-tts-pitch">Pitch <span id="a11y-tts-pitch-val" class="a11y-tts-slider-val">1</span></label>
+                <input type="range" id="a11y-tts-pitch" min="0.5" max="2" step="0.1" value="1">
+              </div>
+              <div class="a11y-tts-slider">
+                <label for="a11y-tts-volume">Volume <span id="a11y-tts-volume-val" class="a11y-tts-slider-val">1</span></label>
+                <input type="range" id="a11y-tts-volume" min="0" max="1" step="0.05" value="1">
+              </div>
+            </div>
+            <div class="a11y-btn-row">
+              <button type="button" class="a11y-option-btn" id="a11y-tts-preview">Preview voice</button>
+              <button type="button" class="a11y-option-btn" id="a11y-tts-stop">Stop</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="a11y-section">

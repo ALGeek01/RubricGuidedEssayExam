@@ -756,3 +756,64 @@ html.a11y-readable-spacing .hero-lead {
   color: #64748b;
   line-height: 1.45;
 }
+
+.a11y-subsection {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.a11y-subsection-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.a11y-tts-panel {
+  margin-top: 0.5rem;
+}
+
+.a11y-tts-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+
+.a11y-tts-slider label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.2rem;
+}
+
+.a11y-tts-slider-val {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.a11y-tts-slider input[type="range"] {
+  width: 100%;
+  accent-color: #2563eb;
+}
+
+.a11y-option-btn {
+  flex: 1;
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 2px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.a11y-option-btn:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}

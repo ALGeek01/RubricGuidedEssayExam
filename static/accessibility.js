@@ -2,6 +2,7 @@
  * RGEE sitewide accessibility preferences (WCAG-oriented controls).
  * Persists in localStorage; applies classes on document.documentElement.
  * Reading bar: full-width horizontal clear band; follows pointer Y immediately on each move (no easing delay).
+ * Speech feedback: browser Speech Synthesis (local device voices; user picks default voice).
  */
 (function () {
   "use strict";
@@ -22,6 +23,14 @@
       dyslexicFont: false,
       underlineLinks: false,
       readableSpacing: false,
+      ttsEnabled: false,
+      ttsVoiceUri: "",
+      ttsRate: 1,
+      ttsPitch: 1,
+      ttsVolume: 1,
+      ttsOnClick: true,
+      ttsOnSelect: true,
+      ttsGenderFilter: "any",
     };
   }
 
@@ -62,6 +71,26 @@
       dyslexicFont: !!saved.dyslexicFont,
       underlineLinks: !!saved.underlineLinks,
       readableSpacing: !!saved.readableSpacing,
+      ttsEnabled: !!saved.ttsEnabled,
+      ttsVoiceUri: typeof saved.ttsVoiceUri === "string" ? saved.ttsVoiceUri : "",
+      ttsRate:
+        typeof saved.ttsRate === "number" && saved.ttsRate >= 0.5 && saved.ttsRate <= 2
+          ? saved.ttsRate
+          : 1,
+      ttsPitch:
+        typeof saved.ttsPitch === "number" && saved.ttsPitch >= 0.5 && saved.ttsPitch <= 2
+          ? saved.ttsPitch
+          : 1,
+      ttsVolume:
+        typeof saved.ttsVolume === "number" && saved.ttsVolume >= 0 && saved.ttsVolume <= 1
+          ? saved.ttsVolume
+          : 1,
+      ttsOnClick: saved.ttsOnClick !== false,
+      ttsOnSelect: saved.ttsOnSelect !== false,
+      ttsGenderFilter:
+        saved.ttsGenderFilter === "female" || saved.ttsGenderFilter === "male"
+          ? saved.ttsGenderFilter
+          : "any",
     };
   }
 
@@ -104,6 +133,340 @@
     }, 50);
   }
 
+  /** Local text-to-speech (browser Speech Synthesis — device voices, user-picked default). */
+  function initA11ySpeech(api) {
+    var synth = window.speechSynthesis || null;
+    var ttsBound = false;
+    var GENDER_ANY = "any";
+    var GENDER_FEMALE = "female";
+    var GENDER_MALE = "male";
+
+    function prefs() {
+      return api.getState();
+    }
+
+    function patchState(patch, message) {
+      api.update(patch, message);
+    }
+
+    function inferGender(voice) {
+      var n = (voice.name || "").toLowerCase();
+      if (
+        /female|woman|girl|samantha|victoria|karen|moira|fiona|tessa|veena|zira|hazel|susan|linda|heera|maria|paulina|monica|laura|anna|ellen|sara|amelie|flo|grandma|grandpa.*female/i.test(
+          n,
+        )
+      ) {
+        return GENDER_FEMALE;
+      }
+      if (
+        /male|man|boy|daniel|david|james|john|fred|ralph|richard|tom|aaron|gordon|bruce|lee|mark|oliver|arthur|marco|diego|jorge|ivan|xander|yuri|grandpa(?!.*female)/i.test(
+          n,
+        )
+      ) {
+        return GENDER_MALE;
+      }
+      return GENDER_ANY;
+    }
+
+    function voiceGender(voice) {
+      return inferGender(voice);
+    }
+
+    function filterVoices(list, genderFilter) {
+      if (!genderFilter || genderFilter === GENDER_ANY) return list;
+      return list.filter(function (v) {
+        var g = voiceGender(v);
+        if (genderFilter === GENDER_FEMALE) return g === GENDER_FEMALE;
+        if (genderFilter === GENDER_MALE) return g === GENDER_MALE;
+        return true;
+      });
+    }
+
+    function loadVoices() {
+      if (!synth) return [];
+      return (synth.getVoices() || []).filter(function (v) {
+        return v && v.lang;
+      });
+    }
+
+    function selectedVoice() {
+      var p = prefs();
+      if (!p || !p.ttsVoiceUri || !synth) return null;
+      var list = loadVoices();
+      for (var i = 0; i < list.length; i += 1) {
+        if (list[i].voiceURI === p.ttsVoiceUri) return list[i];
+      }
+      return null;
+    }
+
+    function speak(text, options) {
+      if (!synth || !text) return false;
+      var p = prefs();
+      if (!p || !p.ttsEnabled) return false;
+      var voice = selectedVoice();
+      if (!voice) {
+        api.announce("Choose a default voice under Focus and reading, Speech feedback, first.");
+        return false;
+      }
+
+      var chunk = String(text).replace(/\s+/g, " ").trim();
+      if (!chunk) return false;
+      if (chunk.length > 500) chunk = chunk.slice(0, 497) + "…";
+
+      synth.cancel();
+      var u = new SpeechSynthesisUtterance(chunk);
+      u.voice = voice;
+      u.lang = voice.lang || undefined;
+      u.rate =
+        options && typeof options.rate === "number" ? options.rate : parseFloat(p.ttsRate) || 1;
+      u.pitch =
+        options && typeof options.pitch === "number" ? options.pitch : parseFloat(p.ttsPitch) || 1;
+      u.volume =
+        options && typeof options.volume === "number" ? options.volume : parseFloat(p.ttsVolume) || 1;
+      synth.speak(u);
+      return true;
+    }
+
+    function stop() {
+      if (synth) synth.cancel();
+    }
+
+    function labelForElement(el) {
+      if (!el || el.closest("#a11y-root")) return "";
+      var tag = (el.tagName || "").toLowerCase();
+      if (el.getAttribute("aria-label")) return el.getAttribute("aria-label").trim();
+      var labelledBy = el.getAttribute("aria-labelledby");
+      if (labelledBy) {
+        var parts = labelledBy.split(/\s+/);
+        var out = [];
+        for (var i = 0; i < parts.length; i += 1) {
+          var ref = document.getElementById(parts[i]);
+          if (ref && ref.textContent) out.push(ref.textContent.trim());
+        }
+        if (out.length) return out.join(" ");
+      }
+      if (tag === "input" || tag === "textarea") {
+        var ph = el.getAttribute("placeholder");
+        if (ph) return ph;
+        if (el.value) return el.value;
+      }
+      if (tag === "img" && el.getAttribute("alt")) return el.getAttribute("alt").trim();
+      var text = (el.textContent || "").replace(/\s+/g, " ").trim();
+      if (text.length > 200) text = text.slice(0, 197) + "…";
+      return text;
+    }
+
+    function onInteractiveClick(ev) {
+      var p = prefs();
+      if (!p || !p.ttsEnabled || !p.ttsOnClick) return;
+      var el = ev.target.closest(
+        "button, a[href], [role='button'], input[type='button'], input[type='submit'], summary, .btn, label",
+      );
+      if (!el || el.closest("#a11y-root, #a11y-panel, .cookie-banner")) return;
+      if (el.disabled || el.getAttribute("aria-disabled") === "true") return;
+      var line = labelForElement(el);
+      if (line) speak(line);
+    }
+
+    function onTextSelected() {
+      var p = prefs();
+      if (!p || !p.ttsEnabled || !p.ttsOnSelect) return;
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      var text = sel.toString().replace(/\s+/g, " ").trim();
+      if (text.length >= 2) speak(text);
+    }
+
+    function populateVoiceSelect(selectEl, genderFilter, selectedUri) {
+      if (!selectEl) return;
+      var list = filterVoices(loadVoices(), genderFilter);
+      list.sort(function (a, b) {
+        if (a.lang < b.lang) return -1;
+        if (a.lang > b.lang) return 1;
+        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+      });
+      selectEl.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent =
+        list.length > 0
+          ? "Choose your default voice…"
+          : "No voices — reload page or check OS speech settings";
+      selectEl.appendChild(placeholder);
+      var byLang = {};
+      list.forEach(function (v) {
+        var lang = v.lang || "unknown";
+        if (!byLang[lang]) byLang[lang] = [];
+        byLang[lang].push(v);
+      });
+      Object.keys(byLang)
+        .sort()
+        .forEach(function (lang) {
+          var group = document.createElement("optgroup");
+          group.label = lang;
+          byLang[lang].forEach(function (v) {
+            var opt = document.createElement("option");
+            opt.value = v.voiceURI;
+            var g = voiceGender(v);
+            var gLabel = g === GENDER_FEMALE ? " · F" : g === GENDER_MALE ? " · M" : "";
+            opt.textContent = v.name + gLabel;
+            if (selectedUri && v.voiceURI === selectedUri) opt.selected = true;
+            group.appendChild(opt);
+          });
+          selectEl.appendChild(group);
+        });
+    }
+
+    function syncTtsUi() {
+      var p = prefs();
+      if (!p) return;
+      var enableToggle = document.getElementById("a11y-tts-enable");
+      var clickToggle = document.getElementById("a11y-tts-click");
+      var selectToggle = document.getElementById("a11y-tts-select");
+      var genderSelect = document.getElementById("a11y-tts-gender");
+      var voiceSelect = document.getElementById("a11y-tts-voice");
+      var rateInput = document.getElementById("a11y-tts-rate");
+      var pitchInput = document.getElementById("a11y-tts-pitch");
+      var volumeInput = document.getElementById("a11y-tts-volume");
+      var rateVal = document.getElementById("a11y-tts-rate-val");
+      var pitchVal = document.getElementById("a11y-tts-pitch-val");
+      var volumeVal = document.getElementById("a11y-tts-volume-val");
+      var unsupported = document.getElementById("a11y-tts-unsupported");
+      var supported = !!synth;
+      if (unsupported) unsupported.hidden = supported;
+      if (enableToggle) enableToggle.setAttribute("aria-pressed", p.ttsEnabled ? "true" : "false");
+      if (clickToggle) clickToggle.setAttribute("aria-pressed", p.ttsOnClick ? "true" : "false");
+      if (selectToggle) selectToggle.setAttribute("aria-pressed", p.ttsOnSelect ? "true" : "false");
+      if (genderSelect) genderSelect.value = p.ttsGenderFilter || GENDER_ANY;
+      if (rateInput) rateInput.value = String(p.ttsRate != null ? p.ttsRate : 1);
+      if (pitchInput) pitchInput.value = String(p.ttsPitch != null ? p.ttsPitch : 1);
+      if (volumeInput) volumeInput.value = String(p.ttsVolume != null ? p.ttsVolume : 1);
+      if (rateVal) rateVal.textContent = rateInput ? rateInput.value : "1";
+      if (pitchVal) pitchVal.textContent = pitchInput ? pitchInput.value : "1";
+      if (volumeVal) volumeVal.textContent = volumeInput ? volumeInput.value : "1";
+      populateVoiceSelect(voiceSelect, p.ttsGenderFilter, p.ttsVoiceUri);
+      var panel = document.querySelector(".a11y-tts-panel");
+      if (panel) panel.hidden = !p.ttsEnabled || !supported;
+    }
+
+    function bindTtsUi() {
+      if (ttsBound) return;
+      ttsBound = true;
+      var enableToggle = document.getElementById("a11y-tts-enable");
+      var clickToggle = document.getElementById("a11y-tts-click");
+      var selectToggle = document.getElementById("a11y-tts-select");
+      var genderSelect = document.getElementById("a11y-tts-gender");
+      var voiceSelect = document.getElementById("a11y-tts-voice");
+      var previewBtn = document.getElementById("a11y-tts-preview");
+      var stopBtn = document.getElementById("a11y-tts-stop");
+      var rateInput = document.getElementById("a11y-tts-rate");
+      var pitchInput = document.getElementById("a11y-tts-pitch");
+      var volumeInput = document.getElementById("a11y-tts-volume");
+
+      if (synth) {
+        loadVoices();
+        speechSynthesis.addEventListener("voiceschanged", function () {
+          syncTtsUi();
+        });
+      }
+
+      if (enableToggle) {
+        enableToggle.addEventListener("click", function () {
+          var p = prefs();
+          var next = !p.ttsEnabled;
+          patchState(
+            { ttsEnabled: next },
+            next ? "Speech on. Pick your default voice below." : "Speech feedback off.",
+          );
+        });
+      }
+      if (clickToggle) {
+        clickToggle.addEventListener("click", function () {
+          var p = prefs();
+          patchState(
+            { ttsOnClick: !p.ttsOnClick },
+            p.ttsOnClick ? "Speak on click off." : "Speak on click on.",
+          );
+        });
+      }
+      if (selectToggle) {
+        selectToggle.addEventListener("click", function () {
+          var p = prefs();
+          patchState(
+            { ttsOnSelect: !p.ttsOnSelect },
+            p.ttsOnSelect ? "Speak selection off." : "Speak selection on.",
+          );
+        });
+      }
+      if (genderSelect) {
+        genderSelect.addEventListener("change", function () {
+          patchState(
+            { ttsGenderFilter: genderSelect.value, ttsVoiceUri: "" },
+            "Voice list filtered. Choose your default voice.",
+          );
+        });
+      }
+      if (voiceSelect) {
+        voiceSelect.addEventListener("change", function () {
+          var uri = voiceSelect.value || "";
+          var name = "";
+          if (uri) {
+            loadVoices().forEach(function (voice) {
+              if (voice.voiceURI === uri) name = voice.name;
+            });
+          }
+          patchState(
+            { ttsVoiceUri: uri },
+            uri
+              ? "Default voice set to " + (name || "selected voice") + "."
+              : "No default voice selected.",
+          );
+        });
+      }
+      if (previewBtn) {
+        previewBtn.addEventListener("click", function () {
+          speak("This is your preview. Rubric Guided Essay Exam speech is ready.");
+        });
+      }
+      if (stopBtn) {
+        stopBtn.addEventListener("click", function () {
+          stop();
+          api.announce("Speech stopped.");
+        });
+      }
+      function bindRange(input, key, label) {
+        if (!input) return;
+        input.addEventListener("input", function () {
+          var patch = {};
+          patch[key] = parseFloat(input.value);
+          patchState(patch, label + " " + input.value + ".");
+        });
+      }
+      bindRange(rateInput, "ttsRate", "Speech rate");
+      bindRange(pitchInput, "ttsPitch", "Speech pitch");
+      bindRange(volumeInput, "ttsVolume", "Speech volume");
+
+      if (synth) {
+        document.addEventListener("click", onInteractiveClick, true);
+        document.addEventListener("mouseup", onTextSelected);
+        document.addEventListener("keyup", function (ev) {
+          if (ev.key === "Escape") stop();
+        });
+      }
+      syncTtsUi();
+    }
+
+    bindTtsUi();
+
+    return {
+      speak: speak,
+      stop: stop,
+      syncUi: syncTtsUi,
+      getVoices: loadVoices,
+      supported: !!synth,
+    };
+  }
+
   function init() {
     var hadSaved = !!loadState();
     var state = mergeState(loadState());
@@ -136,6 +499,7 @@
     var readingBarListenersBound = false;
     /** Last band center Y (viewport px); updated on pointer move and clamped on resize. */
     var readingBarCenterY = 0;
+    var speech = null;
 
     function syncUi() {
       if (cursorDefault)
@@ -148,6 +512,7 @@
       if (linkToggle) linkToggle.setAttribute("aria-pressed", state.underlineLinks ? "true" : "false");
       if (spaceToggle) spaceToggle.setAttribute("aria-pressed", state.readableSpacing ? "true" : "false");
       if (textSelect) textSelect.value = state.textScale;
+      if (speech && speech.syncUi) speech.syncUi();
     }
 
     function getReadingBarBandHeight() {
@@ -351,6 +716,27 @@
         commit("All accessibility options reset.");
       });
     }
+
+    window.RGEE = window.RGEE || {};
+    var a11yApi = {
+      getState: function () {
+        return state;
+      },
+      update: function (patch, message) {
+        if (patch && typeof patch === "object") {
+          Object.keys(patch).forEach(function (k) {
+            state[k] = patch[k];
+          });
+        }
+        commit(message);
+      },
+      announce: function (message) {
+        announce(live, message);
+      },
+    };
+    speech = initA11ySpeech(a11yApi);
+    window.RGEE.a11y = a11yApi;
+    window.RGEE.tts = speech;
   }
 
   if (document.readyState === "loading") {
