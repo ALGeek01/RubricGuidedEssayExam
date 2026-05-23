@@ -16,6 +16,9 @@
   --font-sans: "Outfit", system-ui, sans-serif;
   --font-serif: "Source Serif 4", Georgia, serif;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --scrollbar-size: 10px;
+  --scrollbar-thumb: rgba(148, 163, 184, 0.62);
+  --scrollbar-track: rgba(0, 0, 0, 0.28);
 }
 
 /* Light appearance (default remains dark via :root): calm sky/indigo, higher text contrast */
@@ -33,6 +36,8 @@ html[data-theme="light"] {
   --success: #047857;
   --warn: #a16207;
   --shadow: 0 10px 32px rgba(15, 23, 42, 0.07);
+  --scrollbar-thumb: rgba(71, 85, 105, 0.5);
+  --scrollbar-track: rgba(15, 23, 42, 0.1);
 }
 
 html[data-theme="light"] .page-bg {
@@ -148,6 +153,12 @@ html[data-theme="light"] textarea,
 html[data-theme="light"] select {
   background: #f8fafc;
   border-color: rgba(15, 23, 42, 0.14);
+  color: var(--text);
+  color-scheme: light;
+}
+
+html[data-theme="light"] select option {
+  background-color: #f8fafc;
   color: var(--text);
 }
 
@@ -415,6 +426,11 @@ html[data-theme="light"] .error-text {
 
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {
@@ -465,7 +481,8 @@ body {
   flex-direction: column;
 }
 
-/* Wider layout for performance log so the table uses available screen width */
+/* Wider layout for data-heavy instructor views (session list, performance log, etc.) */
+.wrap.wrap--instructor,
 .wrap.wrap--perf-log {
   max-width: min(90rem, 100%);
   width: 100%;
@@ -2113,6 +2130,13 @@ select {
   appearance: none;
   padding-right: 2.25rem;
   cursor: pointer;
+  background: var(--bg-deep);
+  color-scheme: dark;
+}
+
+select option {
+  background-color: var(--bg-deep);
+  color: var(--text);
 }
 
 .form-actions {
@@ -2621,14 +2645,144 @@ button.btn-primary {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Scrollable boxes: visible scrollbars when content overflows (narrow / resized windows) */
+.table-scroll,
+.perf-log-scroll,
+.panel-table-wrap,
+.analysis-feedback-preview,
+.analysis-nomination-question-cell,
+.rgee-render-math .katex-display,
+.hint-carousel-body .katex-display,
+.answer-math-preview .katex-display,
+.analysis-share-dialog,
+.cookie-settings-dialog,
+.onboarding-dialog,
+.a11y-panel,
+textarea {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.table-scroll::-webkit-scrollbar,
+.perf-log-scroll::-webkit-scrollbar,
+.panel-table-wrap::-webkit-scrollbar,
+.analysis-feedback-preview::-webkit-scrollbar,
+.analysis-nomination-question-cell::-webkit-scrollbar,
+.rgee-render-math .katex-display::-webkit-scrollbar,
+.hint-carousel-body .katex-display::-webkit-scrollbar,
+.answer-math-preview .katex-display::-webkit-scrollbar,
+.analysis-share-dialog::-webkit-scrollbar,
+.cookie-settings-dialog::-webkit-scrollbar,
+.onboarding-dialog::-webkit-scrollbar,
+.a11y-panel::-webkit-scrollbar,
+textarea::-webkit-scrollbar {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+/* Table scroll areas: always show a horizontal track (not macOS overlay scrollbars) */
+.table-scroll,
+.perf-log-scroll,
+.panel-table-wrap {
+  --scrollbar-size: 12px;
+  --scrollbar-thumb: rgba(148, 163, 184, 0.82);
+  scrollbar-width: auto;
+}
+
+.table-scroll::-webkit-scrollbar:horizontal,
+.perf-log-scroll::-webkit-scrollbar:horizontal,
+.panel-table-wrap::-webkit-scrollbar:horizontal {
+  height: calc(var(--scrollbar-size) + 2px);
+}
+
+.table-scroll::-webkit-scrollbar-thumb,
+.perf-log-scroll::-webkit-scrollbar-thumb,
+.panel-table-wrap::-webkit-scrollbar-thumb,
+.analysis-feedback-preview::-webkit-scrollbar-thumb,
+.analysis-nomination-question-cell::-webkit-scrollbar-thumb,
+.rgee-render-math .katex-display::-webkit-scrollbar-thumb,
+.hint-carousel-body .katex-display::-webkit-scrollbar-thumb,
+.answer-math-preview .katex-display::-webkit-scrollbar-thumb,
+.analysis-share-dialog::-webkit-scrollbar-thumb,
+.cookie-settings-dialog::-webkit-scrollbar-thumb,
+.onboarding-dialog::-webkit-scrollbar-thumb,
+.a11y-panel::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.table-scroll::-webkit-scrollbar-track,
+.perf-log-scroll::-webkit-scrollbar-track,
+.panel-table-wrap::-webkit-scrollbar-track,
+.analysis-feedback-preview::-webkit-scrollbar-track,
+.analysis-nomination-question-cell::-webkit-scrollbar-track,
+.rgee-render-math .katex-display::-webkit-scrollbar-track,
+.hint-carousel-body .katex-display::-webkit-scrollbar-track,
+.answer-math-preview .katex-display::-webkit-scrollbar-track,
+.analysis-share-dialog::-webkit-scrollbar-track,
+.cookie-settings-dialog::-webkit-scrollbar-track,
+.onboarding-dialog::-webkit-scrollbar-track,
+.a11y-panel::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track {
+  background-color: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+.table-scroll::-webkit-scrollbar-corner,
+.perf-log-scroll::-webkit-scrollbar-corner,
+.panel-table-wrap::-webkit-scrollbar-corner,
+.analysis-feedback-preview::-webkit-scrollbar-corner,
+.analysis-nomination-question-cell::-webkit-scrollbar-corner,
+.analysis-share-dialog::-webkit-scrollbar-corner,
+.cookie-settings-dialog::-webkit-scrollbar-corner,
+.onboarding-dialog::-webkit-scrollbar-corner,
+.a11y-panel::-webkit-scrollbar-corner,
+textarea::-webkit-scrollbar-corner {
+  background-color: var(--scrollbar-track);
+}
+
 /* Tables */
 .panel-table {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-scroll {
-  overflow-x: auto;
+  overflow-x: scroll;
+  overflow-y: visible;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Wide tables: preserve column widths so horizontal scroll + scrollbar appear when narrow */
+.table-scroll > .data-table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.table-scroll > .data-table th,
+.table-scroll > .data-table td {
+  max-width: none;
+}
+
+.table-scroll > .data-table th:last-child,
+.table-scroll > .data-table td:last-child {
+  white-space: nowrap;
+}
+
+html[data-theme="light"] .table-scroll,
+html[data-theme="light"] .perf-log-scroll,
+html[data-theme="light"] .panel-table-wrap {
+  --scrollbar-thumb: rgba(71, 85, 105, 0.72);
 }
 
 .data-table {
@@ -2721,24 +2875,9 @@ button.btn-primary {
   color: var(--success);
 }
 
-/* Performance log: horizontal scroll on narrow viewports so columns stay readable */
+/* Performance log: column min-widths (scroll behavior matches .table-scroll) */
 .perf-log-panel.panel-table {
   overflow: visible;
-}
-
-.perf-log-scroll.table-scroll {
-  overflow-x: auto;
-  overflow-y: visible;
-  max-width: 100%;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-}
-
-.perf-log-table.data-table {
-  table-layout: auto;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
 }
 
 .perf-log-table col.perf-col-time {
@@ -2805,6 +2944,7 @@ button.btn-primary {
 }
 
 @media (max-width: 720px) {
+  .wrap.wrap--instructor,
   .wrap.wrap--perf-log {
     max-width: 100%;
     padding-left: 0.85rem;
@@ -3120,6 +3260,7 @@ html[data-theme="light"] .hint-collapse-btn:focus-visible {
 .panel-table-wrap {
   overflow-x: auto;
   margin-top: 0.75rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .analysis-nominated-pick-table input[type="checkbox"] {
