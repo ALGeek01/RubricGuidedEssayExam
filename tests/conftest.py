@@ -12,6 +12,26 @@ _cred_dir = tempfile.mkdtemp()
 os.environ["INSTRUCTOR_CREDENTIALS_PATH"] = os.path.join(_cred_dir, "instructor_credentials.json")
 os.environ["INSTRUCTOR_SESSION_SECRET"] = "test-instructor-session-secret-32chars!!"
 os.environ["RGEE_MOCK_QUESTION_ANALYSIS"] = "1"
+os.environ["RGEE_CSRF_ENABLED"] = "0"
+
+import json
+
+from app.instructor_auth import (
+    DEFAULT_PASSWORD_PBKDF2_HEX,
+    DEFAULT_USERNAME_SHA256,
+    PBKDF2_ITERATIONS,
+)
+
+with open(os.environ["INSTRUCTOR_CREDENTIALS_PATH"], "w", encoding="utf-8") as _cred_f:
+    json.dump(
+        {
+            "version": 1,
+            "username_sha256": DEFAULT_USERNAME_SHA256,
+            "password_pbkdf2_hex": DEFAULT_PASSWORD_PBKDF2_HEX,
+            "pbkdf2_iterations": PBKDF2_ITERATIONS,
+        },
+        _cred_f,
+    )
 
 import pytest
 from fastapi.testclient import TestClient

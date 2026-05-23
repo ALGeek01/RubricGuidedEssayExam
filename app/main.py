@@ -18,6 +18,18 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.security import (
+    SecurityHeadersMiddleware,
+    csrf_token_for_template,
+    grant_exam_access,
+    require_csrf,
+    require_exam_access,
+    truncate_field,
+    validate_production_security,
+    MAX_ANSWER_LEN,
+    MAX_PROFESSOR_DOMAIN_LEN,
+    MAX_STUDENT_ID_LEN,
+)
 from app.together_credentials import (
     clear_vault_credentials,
     resolved_together_api_key,
@@ -83,6 +95,7 @@ templates.env.filters["fromjson"] = lambda s: json.loads(s)
 templates.env.filters["level_label"] = label_for_level
 templates.env.filters["strictness_label"] = label_for_strictness
 templates.env.globals["instructor_signed_in"] = instructor_session_ok
+templates.env.globals["csrf_token"] = csrf_token_for_template
 
 _EXAM_ID_IN_PATH = re.compile(r"^/(?:exam|professor/exam)/(\d+)(?:/|$)")
 
@@ -107,6 +120,7 @@ def _exam_session_id_for_http_log(path: str, response: Response | None) -> int |
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     _s = get_settings()
+    validate_production_security(_s)
     ensure_instructor_credentials_file(credentials_path(BASE_DIR, _s))
     # Starlette: use lifespan OR on_event startup — not both. With lifespan set,
     # @app.on_event("startup") is skipped, so DB init must run here.
@@ -120,12 +134,13 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 _inst_settings = get_settings()
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=_inst_settings.instructor_session_secret,
     session_cookie="rgee_instructor",
     same_site="lax",
-    https_only=False,
+    https_only=_inst_settings.session_https_only,
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.mount("/assets", StaticFiles(directory=str(BASE_DIR / "assets")), name="assets")
@@ -610,13 +625,17 @@ def _is_clearly_unrelated_exam_ask(question_text: str, context_blob: str) -> boo
 
 @app.post("/exam/{session_id}/client-timing")
 def exam_client_timing(
+    request: Request,
     session_id: int,
     client_ms_wall: str = Form(...),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_csrf(request, csrf_token)
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     try:
         ms = float(client_ms_wall)
     except (TypeError, ValueError):
@@ -704,9 +723,11 @@ def resume_exam_submit(
     request: Request,
     student_id: str = Form(""),
     exam_id: str = Form(""),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    sid = (student_id or "").strip()
+    require_csrf(request, csrf_token)
+    sid = truncate_field(student_id, MAX_STUDENT_ID_LEN)
     eid = (exam_id or "").strip().upper()
     if not sid or not eid:
         missing = "student ID and exam ID" if (not sid and not eid) else ("student ID" if not sid else "exam ID")
@@ -741,6 +762,7 @@ def resume_exam_submit(
             },
             status_code=404,
         )
+    grant_exam_access(request, session.id)
     return RedirectResponse(url=f"/exam/{session.id}/question", status_code=303)
 
 
@@ -753,11 +775,16 @@ def exam_start(
     llm_mode: str = Form("mock"),
     grading_strictness: str = Form(DEFAULT_GRADING_STRICTNESS),
     num_questions: int = Form(1),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    student_id = student_id.strip()
+    require_csrf(request, csrf_token)
+    student_id = truncate_field(student_id, MAX_STUDENT_ID_LEN)
     if not student_id:
         raise HTTPException(400, "Student ID required")
+    professor_domain = truncate_field(professor_domain, MAX_PROFESSOR_DOMAIN_LEN)
+    if not professor_domain:
+        raise HTTPException(400, "Exam topic / domain required")
     level_key = education_level.strip().lower()
     if level_key not in ALLOWED_LEVEL_IDS:
         raise HTTPException(400, "Invalid education level")
@@ -779,7 +806,7 @@ def exam_start(
     session = ExamSession(
         student_ref_id=student_row.id,
         exam_code=generate_unique_exam_code(db),
-        professor_domain=professor_domain.strip(),
+        professor_domain=professor_domain,
         education_level=level_key,
         use_mock_llm=use_mock,
         num_questions_planned=n,
@@ -812,6 +839,7 @@ def exam_start(
     db.add(eq)
     db.commit()
 
+    grant_exam_access(request, session.id)
     return RedirectResponse(url=f"/exam/{session.id}/question", status_code=303)
 
 
@@ -820,9 +848,11 @@ def exam_start_nominated(
     request: Request,
     student_id: str = Form(""),
     exam_id: str = Form(""),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    sid = (student_id or "").strip()
+    require_csrf(request, csrf_token)
+    sid = truncate_field(student_id, MAX_STUDENT_ID_LEN)
     nom_code = (exam_id or "").strip().upper()
     if not sid or not nom_code:
         missing = "student ID and nominated exam ID" if (not sid and not nom_code) else (
@@ -907,6 +937,7 @@ def exam_start_nominated(
             )
         )
     db.commit()
+    grant_exam_access(request, session.id)
     return RedirectResponse(url=f"/exam/{session.id}/question", status_code=303)
 
 
@@ -915,6 +946,7 @@ def exam_question(request: Request, session_id: int, db: Session = Depends(get_d
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     if session.status != "in_progress":
         return RedirectResponse(url=f"/exam/{session_id}/results", status_code=303)
 
@@ -968,11 +1000,14 @@ def exam_hint(
     request: Request,
     session_id: int,
     answer_draft: str = Form(""),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_csrf(request, csrf_token)
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     if session.status != "in_progress":
         return RedirectResponse(url=f"/exam/{session_id}/results", status_code=303)
 
@@ -1001,33 +1036,21 @@ def exam_hint(
         return RedirectResponse(url=f"/exam/{session_id}/question", status_code=303)
 
     try:
-        if mode_key == "chat":
-            hint_payload = generate_ai_helper_reply(
-                essay_question=q.essay_question,
-                background_information=q.background_information,
-                selected_hint=selected_hint_text,
-                student_question=query_text,
-                education_level=session.education_level,
-                use_mock=session.use_mock_llm,
-                exam_session_id=session.id,
-            )
-        else:
-            hint_payload = generate_safe_hint(
-                essay_question=q.essay_question,
-                background_information=q.background_information,
-                grading_rubric=q.grading_rubric,
-                student_text=student_text or q.essay_question,
-                education_level=session.education_level,
-                use_mock=session.use_mock_llm,
-                exam_session_id=session.id,
-            )
+        hint_payload = generate_safe_hint(
+            essay_question=q.essay_question,
+            background_information=q.background_information,
+            grading_rubric=q.grading_rubric,
+            student_text=student_text or q.essay_question,
+            education_level=session.education_level,
+            use_mock=session.use_mock_llm,
+            exam_session_id=session.id,
+        )
     except TogetherApiError:
         db.rollback()
         raise
 
     hint_status = str(hint_payload.get("status", "ok")).strip().lower()
-    reply_key = "reply" if mode_key == "chat" else "hint"
-    hint_text = str(hint_payload.get(reply_key, "")).strip()
+    hint_text = str(hint_payload.get("hint", "")).strip()
     if hint_status == "irrelevant":
         hint_text = AI_HELPER_OFFTOPIC_MESSAGE
     if not hint_text:
@@ -1041,16 +1064,20 @@ def exam_hint(
 
 @app.post("/exam/{session_id}/hint-json")
 def exam_hint_json(
+    request: Request,
     session_id: int,
     answer_draft: str = Form(""),
     hint_query: str = Form(""),
     selected_hint: str = Form(""),
     mode: str = Form("hint"),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_csrf(request, csrf_token)
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     if session.status != "in_progress":
         raise HTTPException(400, "Exam is not active")
 
@@ -1236,11 +1263,14 @@ def exam_answer(
     request: Request,
     session_id: int,
     answer: str = Form(...),
+    csrf_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_csrf(request, csrf_token)
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     # Idempotent: duplicate POST after exam is finished → send user to results (no error).
     if session.status == "completed":
         return RedirectResponse(url=f"/exam/{session_id}/results", status_code=303)
@@ -1258,7 +1288,7 @@ def exam_answer(
 
     sec = None
 
-    q.student_response = answer.strip()
+    q.student_response = truncate_field(answer, MAX_ANSWER_LEN)
     q.seconds_on_question = sec
 
     next_index = idx + 1
@@ -1443,6 +1473,7 @@ def exam_results(request: Request, session_id: int, db: Session = Depends(get_db
     session = db.get(ExamSession, session_id)
     if not session:
         raise HTTPException(404, "Exam not found")
+    require_exam_access(request, session_id)
     rows = (
         db.query(ExamQuestion)
         .filter(ExamQuestion.session_id == session.id)
@@ -1522,11 +1553,14 @@ def professor_login_post(
     username: str = Form(...),
     password: str = Form(...),
     next_url: str = Form(default="/professor", alias="next"),
+    csrf_token: str = Form(""),
 ):
+    require_csrf(request, csrf_token)
     safe_next = _safe_instructor_next_url(next_url)
     try:
         settings = get_settings()
         if verify_instructor_login(username.strip(), password, BASE_DIR, settings):
+            request.session.clear()
             request.session[SESSION_KEY] = True
             return RedirectResponse(url=safe_next, status_code=303)
     except Exception:
@@ -1554,7 +1588,8 @@ def professor_login_post(
 
 
 @app.post("/professor/logout")
-def professor_logout(request: Request):
+def professor_logout(request: Request, csrf_token: str = Form("")):
+    require_csrf(request, csrf_token)
     request.session.pop(SESSION_KEY, None)
     return RedirectResponse(url="/professor/login", status_code=303)
 
@@ -1579,7 +1614,9 @@ def professor_together_credentials_get(request: Request):
 def professor_together_credentials_save(
     request: Request,
     together_api_key: str = Form(""),
+    csrf_token: str = Form(""),
 ):
+    require_csrf(request, csrf_token)
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
@@ -1592,7 +1629,8 @@ def professor_together_credentials_save(
 
 
 @app.post("/professor/together-credentials/clear", response_class=HTMLResponse)
-def professor_together_credentials_clear(request: Request):
+def professor_together_credentials_clear(request: Request, csrf_token: str = Form("")):
+    require_csrf(request, csrf_token)
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
@@ -1667,7 +1705,9 @@ def professor_question_analysis_feedback(
     manual_quality_code: str = Form(""),
     manual_grade_appropriateness_code: str = Form(""),
     next: str = Form("/professor/question-analysis"),
+    csrf_token: str = Form(""),
 ):
+    require_csrf(request, csrf_token)
     redir = _instructor_login_redirect(request)
     if redir:
         return redir
@@ -1707,6 +1747,7 @@ async def professor_create_nominated_exam(request: Request, db: Session = Depend
     if redir:
         return redir
     form = await request.form()
+    require_csrf(request, str(form.get("csrf_token") or ""))
     title = str(form.get("title") or "").strip()[:512]
     next_raw = str(form.get("next") or "/professor/question-analysis/nomination")
     dest = _safe_question_analysis_redirect(next_raw)

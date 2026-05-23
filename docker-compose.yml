@@ -9,10 +9,12 @@ services:
       context: .
       dockerfile: RGEE_Analysis_Agent/Dockerfile
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     environment:
       RGEE_MOCK_QUESTION_ANALYSIS: "1"
       RGEE_ANALYSIS_AGENT_DATABASE_URL: sqlite:////data/rgee_analysis_agent.db
+      RGEE_ANALYSIS_AGENT_REQUIRE_SECRET: "1"
+      RGEE_ANALYSIS_AGENT_SECRET: "change-me-in-production"
     volumes:
       - rgee-agent-data:/data
 
@@ -25,8 +27,7 @@ services:
     environment:
       MOCK_LLM: "1"
       RGEE_ANALYSIS_AGENT_URL: http://rgee-analysis-agent:8010
-      # Optional: must match RGEE_ANALYSIS_AGENT_SECRET on the agent if you set it
-      # RGEE_ANALYSIS_AGENT_SECRET: "change-me"
+      RGEE_ANALYSIS_AGENT_SECRET: "change-me-in-production"
     depends_on:
       - rgee-analysis-agent
     volumes:

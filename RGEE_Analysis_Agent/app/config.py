@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,8 +22,16 @@ class Settings(BaseSettings):
         alias="QUESTION_ANALYSIS_ST_MODEL",
     )
     api_secret: str = Field(default="", alias="RGEE_ANALYSIS_AGENT_SECRET")
+    require_api_secret: bool = Field(default=False, alias="RGEE_ANALYSIS_AGENT_REQUIRE_SECRET")
     listen_host: str = Field(default="127.0.0.1", alias="RGEE_ANALYSIS_AGENT_HOST")
     listen_port: int = Field(default=8010, alias="RGEE_ANALYSIS_AGENT_PORT")
+
+    @field_validator("require_api_secret", mode="before")
+    @classmethod
+    def _coerce_bool(cls, v):
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return bool(v)
 
 
 @lru_cache

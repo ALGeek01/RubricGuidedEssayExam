@@ -7,6 +7,7 @@
 </section>
 
 <form class="panel form-card" method="post" action="/professor/login" autocomplete="off">
+  {% include 'includes/csrf_input.html' %}
   <h2 class="panel-title">Credentials</h2>
   {% if error %}
   <p class="error-text" role="alert">{{ error }}</p>

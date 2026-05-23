@@ -16,6 +16,7 @@
       {% set share_label = 'Share analysis snapshot' if share_snapshot else 'Run analysis first to share' %}
       {% include 'includes/share_universal_button.html' %}
       <form method="post" action="/professor/logout" class="hero-inline-form">
+        {% include 'includes/csrf_input.html' %}
         <button type="submit" class="btn btn-secondary">Log out</button>
       </form>
     </div>

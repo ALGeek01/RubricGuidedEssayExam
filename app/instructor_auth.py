@@ -8,13 +8,15 @@ import logging
 import secrets
 from pathlib import Path
 
-from app.config import Settings
+from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-# Defaults correspond to username "elliott" and password "12345" (rotate via JSON file or .env).
+# PBKDF2 parameters for instructor password verification.
 PBKDF2_SALT = b"rgee-instructor-v1"
 PBKDF2_ITERATIONS = 210_000
+
+# Test / local-dev defaults (username "elliott", password "12345"). Not written when RGEE_PRODUCTION=1.
 DEFAULT_USERNAME_SHA256 = "0f9c00b3f38f964ee172095f50e53fe9b9e01bd0e1a9f750d877bd26a84ffe18"
 DEFAULT_PASSWORD_PBKDF2_HEX = (
     "b9ccfa56ff91bb8e916a6c836ec754ba32b5b01e17d85eaa731bb1b8cf66a4ee"
@@ -29,17 +31,29 @@ def credentials_path(base_dir: Path, settings: Settings) -> Path:
 
 
 def ensure_instructor_credentials_file(path: Path) -> None:
-    """Create JSON with derived values only (no plaintext)."""
+    """Create JSON with derived values only (no plaintext) when missing."""
     if path.exists():
         return
+    settings = get_settings()
     path.parent.mkdir(parents=True, exist_ok=True)
+    if settings.rgee_production:
+        raise RuntimeError(
+            f"Instructor credentials file missing at {path}. "
+            "Create it with username_sha256 and password_pbkdf2_hex before running in production."
+        )
     payload = {
         "version": 1,
         "username_sha256": DEFAULT_USERNAME_SHA256,
         "password_pbkdf2_hex": DEFAULT_PASSWORD_PBKDF2_HEX,
         "pbkdf2_iterations": PBKDF2_ITERATIONS,
+        "_note": "Development defaults (elliott / 12345). Change before any public deployment.",
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    logger.warning(
+        "Created development instructor credentials at %s (default username/password). "
+        "Replace before production.",
+        path,
+    )
 
 
 def _pbkdf2_hex(password: str, iterations: int) -> str:

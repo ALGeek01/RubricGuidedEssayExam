@@ -42,7 +42,20 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("1", "true", "yes", "on")
         return bool(v)
+
+    @field_validator("rgee_production", "csrf_enabled", "session_https_only", mode="before")
+    @classmethod
+    def _coerce_bool_flag(cls, v):
+        if isinstance(v, str):
+            return v.strip().lower() in ("1", "true", "yes", "on")
+        return bool(v)
     database_url: str = "sqlite:///./exam_system.db"
+
+    # When True, enforce production security (unique session secret, CSRF, agent secret).
+    rgee_production: bool = Field(default=False, alias="RGEE_PRODUCTION")
+    # CSRF tokens on state-changing POST forms (disable only in automated tests).
+    csrf_enabled: bool = Field(default=True, alias="RGEE_CSRF_ENABLED")
+    session_https_only: bool = Field(default=False, alias="INSTRUCTOR_SESSION_HTTPS_ONLY")
 
     # Instructor login: session cookie signing (use a long random value in production).
     instructor_session_secret: str = Field(

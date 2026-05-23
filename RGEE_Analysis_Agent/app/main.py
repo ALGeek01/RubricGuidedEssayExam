@@ -17,6 +17,11 @@ from app.db import get_db, init_db, persist_analysis_run
 def _check_secret(request: Request) -> None:
     secret = get_settings().api_secret.strip()
     if not secret:
+        if get_settings().require_api_secret:
+            raise HTTPException(
+                status_code=503,
+                detail="Analysis agent is not configured with RGEE_ANALYSIS_AGENT_SECRET.",
+            )
         return
     if request.headers.get("X-RGEE-Analysis-Secret", "") != secret:
         raise HTTPException(status_code=401, detail="Invalid or missing X-RGEE-Analysis-Secret header")

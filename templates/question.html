@@ -95,6 +95,7 @@
         <button type="button" class="btn btn-secondary hint-nav-btn" id="ai-next" aria-label="Next AI reply" {% if not ai_helper_history or ai_helper_history|length < 2 %}disabled{% endif %}>→</button>
       </div>
       <form method="post" action="/exam/{{ session.id }}/hint" class="hint-form" id="hint-form">
+        {% include 'includes/csrf_input.html' %}
         <input type="hidden" name="answer_draft" id="answer_draft_hidden" value="">
         <div class="field">
           <label for="hint_query">Ask AI Helper (optional, max 100 words)</label>
@@ -111,6 +112,7 @@
 </section>
 
 <form class="panel form-card" method="post" action="/exam/{{ session.id }}/answer" id="answer-form">
+  {% include 'includes/csrf_input.html' %}
   <h2 class="panel-title">Your answer</h2>
   <div class="field">
     <label for="answer">Essay response <span class="req">*</span></label>
@@ -161,6 +163,8 @@
     sessionStorage.removeItem('rgee_exam_gen_wall_ms');
     var body = new URLSearchParams();
     body.set('client_ms_wall', String(ms));
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    if (csrfMeta && csrfMeta.content) body.set('csrf_token', csrfMeta.content);
     fetch('/exam/' + sessionId + '/client-timing', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -537,6 +541,8 @@
     formData.set('hint_query', includeQuery ? (hintQuery ? (hintQuery.value || '') : '') : '');
     formData.set('selected_hint', (activeHintIndex >= 0 && hintHistory[activeHintIndex]) ? hintHistory[activeHintIndex] : '');
     formData.set('mode', includeQuery ? 'chat' : 'hint');
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    if (csrfMeta && csrfMeta.content) formData.set('csrf_token', csrfMeta.content);
     var originalHintBtnText = hintButton.textContent;
     var originalChatBtnText = hintChatSubmit ? hintChatSubmit.textContent : '';
     hintButton.disabled = true;

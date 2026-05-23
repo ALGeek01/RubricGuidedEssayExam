@@ -9,6 +9,7 @@
   <div class="hero-row">
     <h1 class="hero-title">Manual feedback</h1>
     <form method="post" action="/professor/logout" class="hero-inline-form">
+      {% include 'includes/csrf_input.html' %}
       <button type="submit" class="btn btn-secondary">Log out</button>
     </form>
   </div>
@@ -56,6 +57,7 @@
       </div>
       <p class="muted small-print analysis-feedback-preview rgee-render-math">{{ a.essay_question }}</p>
       <form method="post" action="/professor/question-analysis/feedback" class="analysis-feedback-form">
+        {% include 'includes/csrf_input.html' %}
         <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
         <input type="hidden" name="session_id" value="{{ a.session_id }}">
         <input type="hidden" name="question_id" value="{{ a.question_id }}">
